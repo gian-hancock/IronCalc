@@ -251,11 +251,67 @@ impl Model {
         }
     }
 
+    pub(crate) fn evaluate_node_in_context_2(
+        &mut self,
+        node: &Node,
+        cell: CellReferenceIndex,
+    ) /* -> CalcResult */ {
+        #[derive(Debug)]
+        struct StackFrame<'a> {
+            visit_count: u32,
+            node: &'a Node,
+        }
+
+        fn visit(stack_frame: &mut StackFrame) {
+            stack_frame.visit_count += 1;
+            match stack_frame.node {
+                Node::OpSumKind { kind, left, right } => {
+                    
+                },
+                // _ => { dbg!(stack_frame.node); }
+                _ => { 
+                    dbg!(stack_frame);
+                    panic!("FIXME: Unhandled node type");
+                 }
+            }
+        }
+
+        println!("evaluate_node_in_context_2: {cell:?}");
+
+        let mut traversal_stack = Vec::new();
+        // let mut evaluation_stack = Vec::new();
+
+        traversal_stack.push(StackFrame {
+            visit_count: 0,
+            node: node,
+        });
+
+        while let Some(stack_frame) = traversal_stack.last_mut() {
+            visit(stack_frame);
+            break;
+        }
+        /*
+        while traversal_stack.not_empty() {
+            let current_node = traversal_stack.peek();
+            // - inc visit_count
+            // - if has_another child: push
+            // - else pop from traversal stack and push onto evaluation stack
+            let node_ready_to_process handle_node(current_node);
+            if node_ready_to_process {
+                // - pop operands from stack
+                // - then push result onto stack
+                process_node(evaluation_stack)
+            }
+        }
+        */
+    }
+
     pub(crate) fn evaluate_node_in_context(
         &mut self,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> CalcResult {
+        self.evaluate_node_in_context_2(node, cell);
         use Node::*;
         match node {
             OpSumKind { kind, left, right } => {
