@@ -255,41 +255,33 @@ impl Model {
         &mut self,
         node: &Node,
         cell: CellReferenceIndex,
-    ) /* -> CalcResult */ {
+    ) -> CalcResult {
         #[derive(Debug)]
         struct StackFrame<'a> {
             visit_count: u32,
             node: &'a Node,
         }
-
-        fn visit(stack_frame: &mut StackFrame) {
-            stack_frame.visit_count += 1;
-            match stack_frame.node {
-                Node::OpSumKind { kind, left, right } => {
-                    
-                },
-                // _ => { dbg!(stack_frame.node); }
-                _ => { 
-                    dbg!(stack_frame);
-                    panic!("FIXME: Unhandled node type");
-                 }
-            }
-        }
-
         println!("evaluate_node_in_context_2: {cell:?}");
 
         let mut traversal_stack = Vec::new();
-        // let mut evaluation_stack = Vec::new();
+        let mut evaluation_stack = Vec::new();
 
         traversal_stack.push(StackFrame {
             visit_count: 0,
             node: node,
         });
+        dbg!(&traversal_stack);
 
         while let Some(stack_frame) = traversal_stack.last_mut() {
-            visit(stack_frame);
-            break;
+            if let Some(calc_result) = visit(&mut traversal_stack) {
+                evaluation_stack.push(calc_result);
+                dbg!(&evaluation_stack);
+                evaluate(&mut evaluation_stack);
+            }
         }
+        println!("AND THE RESULT IS:");
+        dbg!(&evaluation_stack);
+        return evaluation_stack.pop().expect("evaluation_stack to be non-empty");
         /*
         while traversal_stack.not_empty() {
             let current_node = traversal_stack.peek();
@@ -304,6 +296,34 @@ impl Model {
             }
         }
         */
+
+        /*
+        - If there are more children to traverse, add the next one to the traversal stack.
+        - If all the children have been visited pop this node from the traversal stack an return
+        */
+        fn visit<'a>(traversal_stack: &mut Vec<StackFrame<'a>>) -> Option<CalcResult> {
+            let stack_frame = traversal_stack.last_mut().expect("traversal stack to be non-empty");
+            stack_frame.visit_count += 1;
+
+            match stack_frame.node {
+                Node::OpSumKind { kind, left, right } => {
+                    None // Fixme
+                },
+                Node::NumberKind(num) => {
+                    traversal_stack.pop().expect("traversal stack to be non-empty");
+                    dbg!(&traversal_stack);
+                    Some(CalcResult::Number(*num))
+                },
+                _ => { 
+                    dbg!(stack_frame);
+                    panic!("FIXME: Unhandled node type");
+                 }
+            }
+        }
+
+        fn evaluate(evaluation_stack: &mut Vec<CalcResult>) {
+
+        }
     }
 
     pub(crate) fn evaluate_node_in_context(
@@ -2054,6 +2074,27 @@ mod tests {
     #![allow(clippy::expect_used)]
     use super::CellReferenceIndex as CellReference;
     use crate::{test::util::new_empty_model, types::Cell};
+    use crate::{
+        calc_result::{CalcResult},
+        expressions::{
+            parser::{
+                Node
+            },
+        }
+    };
+    use crate::model::CellReferenceIndex;
+
+    #[test]
+    fn eval_number_node() {
+        let mut model = new_empty_model();
+        let node = Node::NumberKind(100.0);
+        let calc_result = model.evaluate_node_in_context_2(&node, CellReferenceIndex{
+            column: 0,
+            row: 0, 
+            sheet: 0,
+        });
+        assert_eq!(calc_result, CalcResult::Number(100.0));
+    }
 
     #[test]
     fn test_cell_reference_to_string() {
