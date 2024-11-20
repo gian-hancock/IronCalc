@@ -102,7 +102,7 @@ pub(crate) struct Reference<'a> {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum Node {
+pub enum Node { // BM:
     BooleanKind(bool),
     NumberKind(f64),
     StringKind(String),

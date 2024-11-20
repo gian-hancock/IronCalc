@@ -108,6 +108,7 @@ pub struct Model {
     /// An instance of the parser
     pub(crate) parser: Parser,
     /// The list of cells with formulas that are evaluated of being evaluated
+    // FIXME: This name is a bit confusing, could it be cell_states?
     pub(crate) cells: HashMap<(u32, i32, i32), CellState>,
     /// The locale of the model
     pub(crate) locale: Locale,
@@ -557,6 +558,7 @@ impl Model {
                     // safety belt
                     if value.is_nan() || value.is_infinite() {
                         // This should never happen, is there a way we can log this events?
+                        // FIXME: How about an assert?
                         return self.set_cell_value(
                             cell_reference,
                             &CalcResult::Error {
@@ -747,7 +749,9 @@ impl Model {
         self.workbook.worksheet(sheet)?.is_empty_cell(row, column)
     }
 
+    // BM: evaluate_cell
     pub(crate) fn evaluate_cell(&mut self, cell_reference: CellReferenceIndex) -> CalcResult {
+        println!("evaluate_cell: {cell_reference:?}");
         let row_data = match self.workbook.worksheets[cell_reference.sheet as usize]
             .sheet_data
             .get(&cell_reference.row)
@@ -785,6 +789,7 @@ impl Model {
                         self.cells.insert(key, CellState::Evaluating);
                     }
                 }
+                // ? f index in to formula vec
                 let node = &self.parsed_formulas[cell_reference.sheet as usize][f as usize].clone();
                 let result = self.evaluate_node_in_context(node, cell_reference);
                 self.set_cell_value(cell_reference, &result);
@@ -1725,7 +1730,7 @@ impl Model {
     }
 
     /// Evaluates the model with a top-down recursive algorithm
-    pub fn evaluate(&mut self) {
+    pub fn evaluate(&mut self) { // BM:
         // clear all computation artifacts
         self.cells.clear();
 

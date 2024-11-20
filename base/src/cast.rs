@@ -6,7 +6,7 @@ use crate::{
 };
 
 impl Model {
-    pub(crate) fn get_number(
+    pub(crate) fn get_number( // BM:
         &mut self,
         node: &Node,
         cell: CellReferenceIndex,

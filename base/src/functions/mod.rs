@@ -936,7 +936,7 @@ impl Model {
         doc
     }
 
-    pub(crate) fn evaluate_function(
+    pub(crate) fn evaluate_function( // BM:
         &mut self,
         kind: &Function,
         args: &[Node],

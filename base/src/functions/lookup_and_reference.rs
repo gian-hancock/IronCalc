@@ -680,10 +680,12 @@ impl Model {
 
     // INDIRECT(ref_tex)
     // Returns the reference specified by 'ref_text'
-    pub(crate) fn fn_indirect(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    // FIXME: This only returns a CalcResult::Range, maybe make that a separate type?
+    pub(crate) fn fn_indirect(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult { // BM:
         if args.len() > 2 || args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
+        // evaluate_node_in_context(), then cast_to_string()
         let value = self.get_string(&args[0], cell);
         match value {
             Ok(s) => {
@@ -691,6 +693,7 @@ impl Model {
                     return CalcResult::Error {
                         error: Error::NIMPL,
                         origin: cell,
+                        // FIXME: Implement this?
                         message: "Not implemented".to_string(),
                     };
                 }

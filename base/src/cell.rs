@@ -62,7 +62,7 @@ impl Cell {
     }
 
     /// Returns the formula of a cell if any.
-    pub fn get_formula(&self) -> Option<i32> {
+    pub fn get_formula(&self) -> Option<i32> { // BM: 
         match self {
             Cell::CellFormula { f, .. } => Some(*f),
             Cell::CellFormulaBoolean { f, .. } => Some(*f),

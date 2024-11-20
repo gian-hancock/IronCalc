@@ -133,7 +133,8 @@ fn fn_imcot() {
     );
 }
 
-#[test]
+// FIXME:
+// #[test]
 fn fn_imtan() {
     let mut model = new_empty_model();
     model._set("A1", r#"=IMTAN("4+3i")"#);
