@@ -43,6 +43,25 @@ impl CalcResult {
     pub fn is_error(&self) -> bool {
         matches!(self, CalcResult::Error { .. })
     }
+
+    pub fn as_number(&self) -> Option<f64> {
+        match self {
+            CalcResult::Number(f) => Some(*f),
+            CalcResult::String(s) => match s.parse::<f64>() {
+                Ok(f) => Some(f),
+                _ => None,
+            },
+            CalcResult::Boolean(b) => {
+                if *b {
+                    Some(1.0)
+                } else {
+                    Some(0.0)
+                }
+            },
+            CalcResult::EmptyCell | CalcResult::EmptyArg => Some(0.0),
+            _ => None,
+        }
+    }
 }
 
 impl Ord for CalcResult {

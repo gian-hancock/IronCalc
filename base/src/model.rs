@@ -251,36 +251,37 @@ impl Model {
         }
     }
 
-    pub(crate) fn evaluate_node_in_context_2(
+    pub(crate) fn evaluate_node_in_context(
         &mut self,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> CalcResult {
-        #[derive(Debug)]
-        struct StackFrame<'a> {
-            visit_count: u32,
-            node: &'a Node,
-        }
         println!("evaluate_node_in_context_2: {cell:?}");
 
         let mut traversal_stack = Vec::new();
         let mut evaluation_stack = Vec::new();
 
-        traversal_stack.push(StackFrame {
-            visit_count: 0,
-            node: node,
-        });
-        dbg!(&traversal_stack);
+        traversal_stack.push(node);
+        println!("initial state:\ntraversal stack: {traversal_stack:?}\nevaluation stack: {evaluation_stack:?}");
 
-        while let Some(stack_frame) = traversal_stack.last_mut() {
-            if let Some(calc_result) = visit(&mut traversal_stack) {
-                evaluation_stack.push(calc_result);
-                dbg!(&evaluation_stack);
-                evaluate(&mut evaluation_stack);
-            }
+        // FIXME
+        let mut iters_remaining: u32 = 15;
+        let mut prev_node = None;
+        while !traversal_stack.is_empty() {
+            if iters_remaining == 0 { panic!("Iter limit reached"); }
+            prev_node = Some(
+                visit(
+                    &mut self.workbook.worksheets,
+                    &self.parsed_formulas,
+                    &mut traversal_stack,
+                    &mut evaluation_stack,
+                    &cell,
+                    prev_node));
+            iters_remaining -= 1;
         }
-        println!("AND THE RESULT IS:");
-        dbg!(&evaluation_stack);
+        println!("AND THE RESULT IS:\n{evaluation_stack:?}");
+        // FIXME: Add this back in
+        // assert_eq!(evaluation_stack.len(), 1);
         return evaluation_stack.pop().expect("evaluation_stack to be non-empty");
         /*
         while traversal_stack.not_empty() {
@@ -297,41 +298,170 @@ impl Model {
         }
         */
 
-        /*
-        - If there are more children to traverse, add the next one to the traversal stack.
-        - If all the children have been visited pop this node from the traversal stack an return
-        */
-        fn visit<'a>(traversal_stack: &mut Vec<StackFrame<'a>>) -> Option<CalcResult> {
-            let stack_frame = traversal_stack.last_mut().expect("traversal stack to be non-empty");
-            stack_frame.visit_count += 1;
-
-            match stack_frame.node {
+        // - If visiting the node for the first time and there are children: add children to the traversal stack
+        // - If visiting the node for the second time or there are no children (i.e. backtracking up the stack):
+        //   - Pop from traversal stack
+        //   - Pop operands from evaluation stack
+        //   - Evaluate and push result to evaluation stack
+        fn visit<'a>(
+            worksheets: &mut Vec<Worksheet>,
+            parsed_formulas: &'a Vec<Vec<Node>>,
+            traversal_stack: &mut Vec<&'a Node>, 
+            evaluation_stack: &mut Vec<CalcResult>, 
+            cell: &CellReferenceIndex,
+            prev_node: Option<&Node>
+        ) -> &'a Node {
+            let current_node = *traversal_stack.last().expect("traversal stack to be non-empty");
+            match current_node {
                 Node::OpSumKind { kind, left, right } => {
-                    None // Fixme
+                    let traverse = prev_node.is_none() || prev_node.unwrap() != right.as_ref();
+                    if traverse {
+                        // Traverse
+                        traversal_stack.push(right.as_ref());
+                        traversal_stack.push(left.as_ref());
+                        println!("Traversed OpSumKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                    } else {
+                        // Evaluate
+                        traversal_stack.pop();
+                        let left = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
+                            .expect("FIXME");
+                        let right = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
+                            .expect("FIXME");
+                        evaluation_stack.push(CalcResult::Number(left + right));
+                        println!("Evaluated OpSumKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                    }
                 },
                 Node::NumberKind(num) => {
+                    // Evaluate: Never any children, always evaluate
                     traversal_stack.pop().expect("traversal stack to be non-empty");
-                    dbg!(&traversal_stack);
-                    Some(CalcResult::Number(*num))
+                    evaluation_stack.push(CalcResult::Number(*num));
+                    println!("Evaluated NumberKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
                 },
+                Node::ReferenceKind {
+                    sheet_name: _,
+                    sheet_index,
+                    absolute_row,
+                    absolute_column,
+                    row,
+                    column,
+                } => {
+                    // Get referenced cell
+                    let mut row1 = *row;
+                    let mut column1 = *column;
+                    if !absolute_row {
+                        row1 += cell.row;
+                    }
+                    if !absolute_column {
+                        column1 += cell.column;
+                    }
+                    let referenced_cell = CellReferenceIndex {
+                        sheet: *sheet_index,
+                        row: row1,
+                        column: column1,
+                    };
+                    let cell = worksheets[referenced_cell.sheet as usize]
+                        .sheet_data
+                        .get_mut(&referenced_cell.row)
+                        .and_then(|row| row.get_mut(&referenced_cell.column));
+
+                    // FIXME: I think I'm missing logic for if the cell has a formula but it's already been evaluated
+                    
+                    // Cell is either a CellFormula (unevaluated) in which case we need to Traverse, otherwise we can 
+                    // Evaluate it
+                    if let Some(Cell::CellFormula { f, s }) = cell {
+                        // Traverse:
+                        // FIXME: probably best to avoid using get_formula here, as it has logic we don't need.
+                        // FIXME: this logic around the Option<Cell> could be cleaned up to avoid the unwrap
+                        let formula_node = &parsed_formulas[referenced_cell.sheet as usize][*f as usize];
+                        if prev_node == Some(formula_node) {
+                            // Evaluate and store result in cell
+                            let result = evaluation_stack.pop().expect("evaluation stack to be non-empty");
+                            // Update cell to contain evaluated formula
+                            let calc_result = match result {
+                                CalcResult::String(ref v) => Cell::CellFormulaString{ f: *f, s: *s, v: v.clone() },
+                                CalcResult::Number(v) => Cell::CellFormulaNumber{ f: *f, s: *s, v: v},
+                                CalcResult::Boolean(v) => Cell::CellFormulaBoolean{ f: *f, s: *s, v: v},
+                                _ => panic!("FIXME"),
+                            };
+                            *cell.unwrap() = calc_result;
+                            traversal_stack.pop();
+                            evaluation_stack.push(result);
+                            println!("Evaluated ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula):\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                        } else {
+                            // Traverse
+                            traversal_stack.push(formula_node);
+                            println!("Traversed ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula):\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                        }
+                    } else {
+                        // Evaluate:
+                        let calc_result = if cell.is_none() {
+                            CalcResult::EmptyCell
+                        } else {
+                            // FIXME logic around the optional cell could be cleaned up to avoid the unwrap
+                            // FIXME pulled from get_cell_value(). Consider pulling into common function.
+                            use Cell::*;
+                            // FIXME: Remove unwrap, handle reference to non-existing cell
+                            match cell.unwrap() {
+                                EmptyCell { .. } => CalcResult::EmptyCell,
+                                BooleanCell { v, .. } => CalcResult::Boolean(*v),
+                                NumberCell { v, .. } => CalcResult::Number(*v),
+                                ErrorCell { ei, .. } => {
+                                    panic!(); // FIXME
+                                    // let message = ei.to_localized_error_string(&self.language);
+                                    // CalcResult::new_error(ei.clone(), cell_reference, message)
+                                }
+                                SharedString { si, .. } => {
+                                    panic!(); // FIXME
+                                    // if let Some(s) = self.workbook.shared_strings.get(*si as usize) {
+                                    //     CalcResult::String(s.clone())
+                                    // } else {
+                                    //     let message = "Invalid shared string".to_string();
+                                    //     CalcResult::new_error(Error::ERROR, cell_reference, message)
+                                    // }
+                                }
+                                // FIXME: Shouldn't have to handle cell formula, it should be an already evaluated cell
+                                // CellFormula { .. } => CalcResult::Error {
+                                //     error: Error::ERROR,
+                                //     origin: cell_reference,
+                                //     message: "Unevaluated formula".to_string(),
+                                // },
+                                CellFormulaBoolean { v, .. } => CalcResult::Boolean(*v),
+                                CellFormulaNumber { v, .. } => CalcResult::Number(*v),
+                                CellFormulaString { v, .. } => CalcResult::String(v.clone()),
+                                CellFormulaError { ei, o, m, .. } => {
+                                    panic!(); // FIXME:
+                                    // if let Some(cell_reference) = self.parse_reference(o) {
+                                    //     CalcResult::new_error(ei.clone(), cell_reference, m.clone())
+                                    // } else {
+                                    //     CalcResult::Error {
+                                    //         error: ei.clone(),
+                                    //         origin: cell_reference,
+                                    //         message: ei.to_localized_error_string(&self.language),
+                                    //     }
+                                    // }
+                                }
+                                _ => panic!(),
+                            }
+                        };
+                        traversal_stack.pop();
+                        evaluation_stack.push(calc_result);
+                        println!("Evaluated ReferenceKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                    }
+                }
                 _ => { 
-                    dbg!(stack_frame);
+                    println!("UnhandledKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
                     panic!("FIXME: Unhandled node type");
                  }
             }
-        }
-
-        fn evaluate(evaluation_stack: &mut Vec<CalcResult>) {
-
+            current_node
         }
     }
 
-    pub(crate) fn evaluate_node_in_context(
+    pub(crate) fn evaluate_node_in_context_old(
         &mut self,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> CalcResult {
-        self.evaluate_node_in_context_2(node, cell);
         use Node::*;
         match node {
             OpSumKind { kind, left, right } => {
@@ -841,6 +971,8 @@ impl Model {
                 return CalcResult::EmptyCell;
             }
         };
+
+        // TODO: Get value from cell unless it's a CellFormula, in which case evaluate node
 
         match cell.get_formula() {
             Some(f) => {
@@ -2083,17 +2215,56 @@ mod tests {
         }
     };
     use crate::model::CellReferenceIndex;
+    use crate::model::OpSum;
 
     #[test]
     fn eval_number_node() {
         let mut model = new_empty_model();
         let node = Node::NumberKind(100.0);
-        let calc_result = model.evaluate_node_in_context_2(&node, CellReferenceIndex{
+        let calc_result = model.evaluate_node_in_context(&node, CellReferenceIndex{
             column: 0,
             row: 0, 
             sheet: 0,
         });
         assert_eq!(calc_result, CalcResult::Number(100.0));
+    }
+
+    #[test]
+    fn eval_sum_node() {
+        let mut model = new_empty_model();
+        let node = Node::OpSumKind {
+            kind: OpSum::Add,
+            left: Box::new(Node::NumberKind(100.0)),
+            right: Box::new(Node::NumberKind(50.0)),
+        };
+        let calc_result = model.evaluate_node_in_context(&node, CellReferenceIndex {
+            column: 0,
+            row: 0, 
+            sheet: 0,
+        });
+        assert_eq!(calc_result, CalcResult::Number(150.0));
+    }
+
+    #[test]
+    fn eval_reference_node() {
+        let mut model = new_empty_model();
+        model._set("A1", "=A2");
+        model._set("A2", "5");
+        model.evaluate();
+        assert_eq!(model._get_text("A1"), "5");
+    }
+
+    #[test]
+    fn eval_super_node() {
+        let mut model = new_empty_model();
+        model._set("A1", "=A2 + A3");
+        model._set("A2", "1");
+        model._set("A3", "=1 + 1");
+        model.evaluate();
+        assert_eq!(model._get_text("A1"), "3");
+        assert_eq!(model._get_text("A2"), "1");
+        assert_eq!(model._get_text("A3"), "2");
+        dbg!(model.workbook.worksheets);
     }
 
     #[test]
