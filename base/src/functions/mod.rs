@@ -4,7 +4,7 @@ use std::array::IntoIter;
 use crate::{
     calc_result::CalcResult,
     expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::Model,
+    model::Model, types::Worksheet,
 };
 
 pub(crate) mod binary_search;
@@ -924,6 +924,18 @@ pub struct Documentation {
     pub name: String,
 }
 
+pub(crate) fn evaluate_function_new(
+    worksheets: &Vec<Worksheet>,
+    kind: &Function,
+    args: Vec<CalcResult>,
+    cell: CellReferenceIndex,
+) -> CalcResult {
+    match kind {
+        Function::Sum => mathematical::fn_sum(worksheets, &args, cell),
+        _ => todo!(),
+    }
+}
+
 impl Model {
     /// Produces documentation for all implemented functions
     pub fn documentation() -> Vec<Documentation> {
@@ -936,7 +948,7 @@ impl Model {
         doc
     }
 
-    pub(crate) fn evaluate_function( // BM:
+    pub(crate) fn evaluate_function(
         &mut self,
         kind: &Function,
         args: &[Node],

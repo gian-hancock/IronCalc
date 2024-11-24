@@ -21,7 +21,7 @@ use crate::{
         format::{format_number, parse_formatted_number},
         lexer::is_likely_date_number_format,
     },
-    functions::util::compare_values,
+    functions::{evaluate_function_new, util::compare_values},
     implicit_intersection::implicit_intersection,
     language::{get_language, Language},
     locale::{get_locale, Currency, Locale},
@@ -282,8 +282,7 @@ impl Model {
             iters_remaining -= 1;
         }
         println!("AND THE RESULT IS:\n{evaluation_stack:?}");
-        // FIXME: Add this back in
-        // assert_eq!(evaluation_stack.len(), 1);
+        assert_eq!(evaluation_stack.len(), 1);
         return evaluation_stack.pop().expect("evaluation_stack to be non-empty");
         /*
         while traversal_stack.not_empty() {
@@ -471,6 +470,19 @@ impl Model {
                         println!("Evaluated ReferenceKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     }
                 }
+                Node::FunctionKind { kind, args } => {
+                    if !second_visit {
+                        // Traverse
+                        visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
+                        traversal_stack.extend(args.iter().rev());
+                        println!("Traversed FunctionKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                    } else {
+                        // Split off the args from the eval stack needed for this function
+                        let args = evaluation_stack.split_off(evaluation_stack.len() - args.len());
+                        evaluation_stack.push(evaluate_function_new(&worksheets, kind, args, *cell));
+                        println!("Traversed FunctionKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                    }
+                },
                 _ => { 
                     println!("UnhandledKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     panic!("FIXME: Unhandled node type");
@@ -480,7 +492,7 @@ impl Model {
         }
     }
 
-    pub(crate) fn evaluate_node_in_context_old(
+    pub(crate) fn evaluate_node_in_context_old( // BM:
         &mut self,
         node: &Node,
         cell: CellReferenceIndex,
@@ -978,58 +990,19 @@ impl Model {
         self.workbook.worksheet(sheet)?.is_empty_cell(row, column)
     }
 
-    // BM: evaluate_cell
+    // FIXME: Do we even need this function?
     pub(crate) fn evaluate_cell(&mut self, cell_reference: CellReferenceIndex) -> CalcResult {
-        println!("evaluate_cell: {cell_reference:?}");
-        let row_data = match self.workbook.worksheets[cell_reference.sheet as usize]
-            .sheet_data
-            .get(&cell_reference.row)
-        {
-            Some(r) => r,
-            None => return CalcResult::EmptyCell,
-        };
-        let cell = match row_data.get(&cell_reference.column) {
-            Some(c) => c,
-            None => {
-                return CalcResult::EmptyCell;
-            }
-        };
-
-        // TODO: Get value from cell unless it's a CellFormula, in which case evaluate node
-
-        match cell.get_formula() {
-            Some(f) => {
-                let key = (
-                    cell_reference.sheet,
-                    cell_reference.row,
-                    cell_reference.column,
-                );
-                match self.cells.get(&key) {
-                    Some(CellState::Evaluating) => {
-                        return CalcResult::new_error(
-                            Error::CIRC,
-                            cell_reference,
-                            "Circular reference detected".to_string(),
-                        );
-                    }
-                    Some(CellState::Evaluated) => {
-                        return self.get_cell_value(cell, cell_reference);
-                    }
-                    _ => {
-                        // mark cell as being evaluated
-                        self.cells.insert(key, CellState::Evaluating);
-                    }
-                }
-                // ? f index in to formula vec
-                let node = &self.parsed_formulas[cell_reference.sheet as usize][f as usize].clone();
-                let result = self.evaluate_node_in_context(node, cell_reference);
-                self.set_cell_value(cell_reference, &result);
-                // mark cell as evaluated
-                self.cells.insert(key, CellState::Evaluated);
-                result
-            }
-            None => self.get_cell_value(cell, cell_reference),
-        }
+        self.evaluate_node_in_context(
+            &Node::ReferenceKind {
+                sheet_name: None,
+                sheet_index: cell_reference.sheet,
+                absolute_row: true,
+                absolute_column: true,
+                row: cell_reference.row,
+                column: cell_reference.column,
+            },
+            cell_reference,
+        )
     }
 
     pub(crate) fn get_sheet_index_by_name(&self, name: &str) -> Option<u32> {
@@ -2275,6 +2248,38 @@ mod tests {
         model._set("A2", "5");
         model.evaluate();
         assert_eq!(model._get_text("A1"), "5");
+    }
+
+    #[test]
+    fn eval_doubly_referenced_formula() {
+        let mut model = new_empty_model();
+        model._set("A1", "=A2");
+        model._set("A2", "=2+3");
+        model._set("A3", "=A2");
+        model.evaluate();
+        assert_eq!(model._get_text("A1"), "5");
+        assert_eq!(model._get_text("A3"), "5");
+        // FIXME: How to assert that the OpSumKind is only evaulated once?
+    }
+
+    #[test]
+    fn eval_sum_fn() {
+        let mut model = new_empty_model();
+        model._set("A1", "=SUM(A2, 3)");
+        model._set("A2", "1");
+        model.evaluate();
+        assert_eq!(model._get_text("A1"), "4");
+    }
+
+    #[test]
+    fn eval_sum_range_fn() {
+        let mut model = new_empty_model();
+        model._set("A1", "=SUM(A2:B4)");
+        model._set("A2", "1");
+        model._set("B3", "2");
+        model._set("B4", "4");
+        model.evaluate();
+        assert_eq!(model._get_text("A1"), "7");
     }
 
     #[test]

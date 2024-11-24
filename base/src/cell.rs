@@ -1,3 +1,4 @@
+use crate::calc_result::CalcResult;
 use crate::{
     expressions::token::Error, language::Language, number_format::to_excel_precision_str, types::*,
 };
@@ -173,6 +174,33 @@ impl Cell {
             CellValue::String(value) => value,
             CellValue::Boolean(value) => value.to_string().to_uppercase(),
             CellValue::Number(value) => format_number(value),
+        }
+    }
+
+    pub fn cast_to_number(&self) -> Result<f64, CalcResult> {
+        match self {
+            Cell::EmptyCell { .. } => Ok(0.0),
+            Cell::BooleanCell { v, .. } => {
+                if *v {
+                    Ok(1.0)
+                } else {
+                    Ok(0.0)
+                }
+            }
+            Cell::NumberCell { v, .. } => Ok(*v),
+            Cell::ErrorCell { ei, .. } => todo!(),
+            Cell::SharedString { .. } => todo!(),
+            Cell::CellFormula { .. } => unreachable!("Cell should already be evaluated"),
+            Cell::CellFormulaBoolean { v, .. } => {
+                if *v {
+                    Ok(1.0)
+                } else {
+                    Ok(0.0)
+                }
+            }
+            Cell::CellFormulaNumber { v, .. } => Ok(*v),
+            Cell::CellFormulaString { .. } => todo!(),
+            Cell::CellFormulaError { ei, .. } => todo!(),
         }
     }
 }

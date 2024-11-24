@@ -29,6 +29,7 @@ f_args  => e (',' e)*
 
 use std::collections::HashMap;
 
+use crate::calc_result::CalcResult;
 use crate::functions::Function;
 use crate::language::get_language;
 use crate::locale::get_locale;

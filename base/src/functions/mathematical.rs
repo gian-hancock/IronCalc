@@ -1,5 +1,7 @@
 use crate::constants::{LAST_COLUMN, LAST_ROW};
 use crate::expressions::types::CellReferenceIndex;
+use crate::types::Worksheet;
+use crate::worksheet;
 use crate::{
     calc_result::CalcResult, expressions::parser::Node, expressions::token::Error, model::Model,
 };
@@ -14,6 +16,55 @@ pub fn random() -> f64 {
 pub fn random() -> f64 {
     use js_sys::Math;
     Math::random()
+}
+
+pub(crate) fn fn_sum(worksheets: &Vec<Worksheet>, args: &[CalcResult], cell: CellReferenceIndex) -> CalcResult {
+    if args.is_empty() {
+        return CalcResult::new_args_number_error(cell);
+    }
+
+    let mut result = 0.0;
+    for arg in args {
+        match arg {
+            CalcResult::Number(value) => result += value,
+            CalcResult::Range { left, right } => {
+                if left.sheet != right.sheet {
+                    return CalcResult::new_error(
+                        Error::VALUE,
+                        cell,
+                        "Ranges are in different sheets".to_string(),
+                    );
+                }
+                let worksheet = &worksheets[left.sheet as usize];
+                // TODO: We should do this for all functions that run through ranges
+                // Running cargo test for the ironcalc takes around .8 seconds with this speedup
+                // and ~ 3.5 seconds without it. Note that once properly in place sheet.dimension should be almost a noop
+                let row1 = left.row;
+                let mut row2 = right.row;
+                let column1 = left.column;
+                let mut column2 = right.column;
+                if row1 == 1 && row2 == LAST_ROW {
+                    row2 = worksheet.dimension().max_row;
+                }
+                if column1 == 1 && column2 == LAST_COLUMN {
+                    column2 = worksheet.dimension().max_column;
+                }
+                for row in row1..row2 + 1 {
+                    for column in column1..(column2 + 1) {
+                        // Get value in cell. the cell is already evaluated so just fetch the value
+                        worksheet.sheet_data[&row][&column].cast_to_number().map(|value| {
+                            result += value;
+                        });
+                    }
+                }
+            }
+            error @ CalcResult::Error { .. } => return error.clone(),
+            _ => {
+                // We ignore booleans and strings
+            }
+        };
+    }
+    CalcResult::Number(result)
 }
 
 impl Model {
@@ -257,6 +308,7 @@ impl Model {
         CalcResult::Number(result)
     }
 
+    // FIXME: Remove this
     /// SUMIF(criteria_range, criteria, [sum_range])
     /// if sum_rage is missing then criteria_range will be used
     pub(crate) fn fn_sumif(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
