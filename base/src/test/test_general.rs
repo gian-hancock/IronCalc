@@ -512,8 +512,8 @@ fn test_letter_case() {
 }
 
 #[test]
-fn test_long_dependent_evaluation_chain_1_column() {
-    const ROWS: i32 = 100; // FIXME: Set to 1000
+fn test_long_dependent_evaluation_chain() {
+    const ROWS: i32 = 1000;
 
     let mut model = new_empty_model();
 
@@ -524,61 +524,18 @@ fn test_long_dependent_evaluation_chain_1_column() {
     model.evaluate();
     assert_eq!(model._get_text("A1"), "1");
     assert_eq!(model._get_text(&format!("A{ROWS}")), format!("{ROWS}"));
-}
-
-// FIXME:
-// #[test]
-fn test_long_dependent_evaluation_chain_2_column() {
-    const ROWS: i32 = 100; // FIXME: Set to 1000
-
-    let mut model = new_empty_model();
-
-    model._set(&format!("A1"), "1");
-    for row_num in 2..=ROWS {
-        model._set(&format!("A{row_num}"), &format!("=A{}+1", row_num-1));
-    }
-    let cell_name = format!("A{ROWS}");
-    model._set("B1", &format!("={cell_name}+1"));
-    model.evaluate();
-    assert_eq!(model._get_text("A1"), "1");
-    assert_eq!(model._get_text(&format!("A{ROWS}")), format!("{ROWS}"));
-    assert_eq!(model._get_text(&cell_name), format!("{}", ROWS+1));
 }
 
 #[test]
-fn test_long_dependent_evaluation_chain_1_row() {
-    const COLUMNS: i32 = 100; // FIXME: Set to 1000
-    let last_col_name = utils::number_to_column(COLUMNS).unwrap();
+fn test_reverse_long_dependent_evaluation_chain() {
+    const ROWS: i32 = 1000;
 
     let mut model = new_empty_model();
 
-    model._set(&format!("A1"), "1");
-    for col_num in 2..=COLUMNS {
-        let col_name = utils::number_to_column(col_num).unwrap();
-        let prev_col_name = utils::number_to_column(col_num - 1).unwrap();
-        model._set(&format!("{col_name}1"), &format!("={prev_col_name}1 + 1"));
+    model._set(&format!("A{ROWS}"), "1");
+    for row_num in 1..ROWS {
+        model._set(&format!("A{row_num}"), &format!("=A{}+1", row_num+1));
     }
     model.evaluate();
-    assert_eq!(model._get_text("A1"), "1");
-    assert_eq!(model._get_text(&format!("{last_col_name}1")), format!("{COLUMNS}"));
-}
-
-// FIXME:
-// #[test]
-fn test_long_dependent_evaluation_chain_2_row() {
-    const COLUMNS: i32 = 100; // FIXME: Set to 1000
-    let last_col_name = utils::number_to_column(COLUMNS).unwrap();
-
-    let mut model = new_empty_model();
-
-    model._set(&format!("A1"), "1");
-    for col_num in 2..=COLUMNS {
-        let col_name = utils::number_to_column(col_num).unwrap();
-        let prev_col_name = utils::number_to_column(col_num - 1).unwrap();
-        model._set(&format!("{col_name}1"), &format!("={prev_col_name}1 + 1"));
-    }
-    model._set("B1", &format!("={last_col_name}1 + 1"));
-    model.evaluate();
-    assert_eq!(model._get_text("A1"), "1");
-    assert_eq!(model._get_text("B1"), format!("{}", COLUMNS+1));
+    assert_eq!(model._get_text("A1"), format!("{ROWS}"));
 }

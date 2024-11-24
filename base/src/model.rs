@@ -259,10 +259,11 @@ impl Model {
         println!("evaluate_node_in_context_2: {cell:?}");
 
         let mut traversal_stack = Vec::new();
+        let mut visited_traversal_stack_indexes = Vec::new();
         let mut evaluation_stack = Vec::new();
 
         traversal_stack.push(node);
-        println!("initial state:\ntraversal stack: {traversal_stack:?}\nevaluation stack: {evaluation_stack:?}");
+        println!("initial state:\ntraversal stack: {traversal_stack:#?}\nevaluation stack: {evaluation_stack:?}");
 
         // FIXME
         let mut iters_remaining: u32 = 15;
@@ -274,6 +275,7 @@ impl Model {
                     &mut self.workbook.worksheets,
                     &self.parsed_formulas,
                     &mut traversal_stack,
+                    &mut visited_traversal_stack_indexes,
                     &mut evaluation_stack,
                     &cell,
                     prev_node));
@@ -306,36 +308,45 @@ impl Model {
         fn visit<'a>(
             worksheets: &mut Vec<Worksheet>,
             parsed_formulas: &'a Vec<Vec<Node>>,
-            traversal_stack: &mut Vec<&'a Node>, 
-            evaluation_stack: &mut Vec<CalcResult>, 
+            traversal_stack: &mut Vec<&'a Node>,
+            visited_traversal_stack_indexes: &mut Vec<usize>,
+            evaluation_stack: &mut Vec<CalcResult>,
             cell: &CellReferenceIndex,
             prev_node: Option<&Node>
         ) -> &'a Node {
+            assert!(visited_traversal_stack_indexes.len() <= traversal_stack.len());
+
             let current_node = *traversal_stack.last().expect("traversal stack to be non-empty");
+            let second_visit = visited_traversal_stack_indexes.last().is_some_and(|i| *i == traversal_stack.len() - 1);
+            if second_visit {
+                traversal_stack.pop().expect("traversal stack to be non-empty");
+                let traversal_stack_index = visited_traversal_stack_indexes.pop()
+                    .expect("visited traversal stack indexes to be non-empty");
+                assert_eq!(traversal_stack.len(), traversal_stack_index);
+            }
             match current_node {
                 Node::OpSumKind { kind, left, right } => {
-                    let traverse = prev_node.is_none() || prev_node.unwrap() != right.as_ref();
-                    if traverse {
+                    if !second_visit {
                         // Traverse
+                        visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
                         traversal_stack.push(right.as_ref());
                         traversal_stack.push(left.as_ref());
-                        println!("Traversed OpSumKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                        println!("Traversed OpSumKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     } else {
                         // Evaluate
-                        traversal_stack.pop();
                         let left = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
                             .expect("FIXME");
                         let right = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
                             .expect("FIXME");
                         evaluation_stack.push(CalcResult::Number(left + right));
-                        println!("Evaluated OpSumKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                        println!("Evaluated OpSumKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     }
                 },
                 Node::NumberKind(num) => {
                     // Evaluate: Never any children, always evaluate
                     traversal_stack.pop().expect("traversal stack to be non-empty");
                     evaluation_stack.push(CalcResult::Number(*num));
-                    println!("Evaluated NumberKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                    println!("Evaluated NumberKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                 },
                 Node::ReferenceKind {
                     sheet_name: _,
@@ -345,6 +356,18 @@ impl Model {
                     row,
                     column,
                 } => {
+                    // Cases:
+                    //   1. First visit, cell is Cell::CellFormula (an unevaluated formula)
+                    //   2. First visit, cell is not Cell::CellFormula
+                    //   3. Second visit, cell is Cell::CellFormula
+                    //   4. Second visit, cell is not Cell::CellFormula.
+                    // 
+                    // Case 1: Traverse
+                    // Case 2: Evaluate immediately without visiting
+                    // Case 3: Evaluate using top value from evaluation stack. With side effect of setting cell value
+                    //         to one of the Cell::CellFormula<type> cases.
+                    // Case 4: Impossible
+
                     // Get referenced cell
                     let mut row1 = *row;
                     let mut column1 = *column;
@@ -364,39 +387,40 @@ impl Model {
                         .get_mut(&referenced_cell.row)
                         .and_then(|row| row.get_mut(&referenced_cell.column));
 
-                    // FIXME: I think I'm missing logic for if the cell has a formula but it's already been evaluated
-                    
-                    // Cell is either a CellFormula (unevaluated) in which case we need to Traverse, otherwise we can 
-                    // Evaluate it
-                    if let Some(Cell::CellFormula { f, s }) = cell {
+                    if !second_visit && matches!(cell, Some(Cell::CellFormula { f, s })) {
+                        // Case 1 
                         // Traverse:
-                        // FIXME: probably best to avoid using get_formula here, as it has logic we don't need.
-                        // FIXME: this logic around the Option<Cell> could be cleaned up to avoid the unwrap
-                        let formula_node = &parsed_formulas[referenced_cell.sheet as usize][*f as usize];
-                        if prev_node == Some(formula_node) {
-                            // Evaluate and store result in cell
-                            let result = evaluation_stack.pop().expect("evaluation stack to be non-empty");
-                            // Update cell to contain evaluated formula
-                            let calc_result = match result {
+                        match cell {
+                            Some(Cell::CellFormula { f, s }) => {
+                                // FIXME: probably best to avoid using get_formula here, as it has logic we don't need.
+                                // FIXME: this logic around the Option<Cell> could be cleaned up to avoid the unwrap
+                                visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
+                                let formula_node = &parsed_formulas[referenced_cell.sheet as usize][*f as usize];                    
+                                traversal_stack.push(formula_node);
+                                println!("Traversed ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula):\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                            },
+                            _ => unreachable!(),
+                        }
+                    } else {
+                        // Case 2 or 3:
+                        // Evaluate
+                        let calc_result = if let Some(Cell::CellFormula { f, s }) = cell {
+                            // Case 3
+                            assert!(second_visit, "Expect not case 1");
+                            let calc_result = evaluation_stack.pop().expect("evaluation stack to be non-empty");
+                            // Set cell from Cell::CellFormula to one of the evaluated formula types.
+                            *cell.unwrap() = match calc_result {
                                 CalcResult::String(ref v) => Cell::CellFormulaString{ f: *f, s: *s, v: v.clone() },
                                 CalcResult::Number(v) => Cell::CellFormulaNumber{ f: *f, s: *s, v: v},
                                 CalcResult::Boolean(v) => Cell::CellFormulaBoolean{ f: *f, s: *s, v: v},
                                 _ => panic!("FIXME"),
                             };
-                            *cell.unwrap() = calc_result;
-                            traversal_stack.pop();
-                            evaluation_stack.push(result);
-                            println!("Evaluated ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula):\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                            calc_result
                         } else {
-                            // Traverse
-                            traversal_stack.push(formula_node);
-                            println!("Traversed ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula):\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
-                        }
-                    } else {
-                        // Evaluate:
-                        let calc_result = if cell.is_none() {
-                            CalcResult::EmptyCell
-                        } else {
+                            // Case 2:
+                            assert!(!second_visit, "Expect not case 4");
+
+                            traversal_stack.pop().expect("traversal stack to be non-empty");
                             // FIXME logic around the optional cell could be cleaned up to avoid the unwrap
                             // FIXME pulled from get_cell_value(). Consider pulling into common function.
                             use Cell::*;
@@ -443,13 +467,12 @@ impl Model {
                                 _ => panic!(),
                             }
                         };
-                        traversal_stack.pop();
                         evaluation_stack.push(calc_result);
-                        println!("Evaluated ReferenceKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                        println!("Evaluated ReferenceKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     }
                 }
                 _ => { 
-                    println!("UnhandledKind:\ntraversal: {traversal_stack:?}\nevaluation: {evaluation_stack:?}");
+                    println!("UnhandledKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     panic!("FIXME: Unhandled node type");
                  }
             }
@@ -2266,6 +2289,36 @@ mod tests {
         assert_eq!(model._get_text("A3"), "2");
         dbg!(model.workbook.worksheets);
     }
+
+    #[test]
+    fn eval_reference_updates_cell() {
+        let mut model = new_empty_model();
+        model._set("A1", "=A2");
+        model._set("A2", "1");
+
+        let calc_result = model.evaluate_node_in_context(
+            &Node::ReferenceKind {
+                sheet_name: None,
+                sheet_index: 0,
+                absolute_row: true,
+                absolute_column: true,
+                row: 1,
+                column: 1,
+            },
+            CellReferenceIndex { sheet: 0, column: 1, row: 1 },
+        );
+
+        // Evaluating the node should have the side effect of updating the cell A1 from Cell::CellFormula to 
+        // Cell::CellFormulaNumber
+        match model.workbook.worksheets[0].sheet_data[&1][&1] {
+            Cell::CellFormulaNumber { f: _, v, s: _ } => assert_eq!(v, 1.0),
+            _ => unreachable!(),
+        }
+    }
+
+    // TODO: Test that cells are no longer Cell::Formula after model.evaluate()
+    // TODO: Test that cells are only evaluated once, even if there are multiple references to them;
+    // TODO: Consider implementing evaluate_cell as evaluating a CellReference to that cell()
 
     #[test]
     fn test_cell_reference_to_string() {
