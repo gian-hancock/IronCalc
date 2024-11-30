@@ -256,29 +256,30 @@ impl Model {
         node: &Node,
         cell: CellReferenceIndex,
     ) -> CalcResult {
+        #[derive(Debug, Clone)]
+        enum TraversalStackEntry<'a> {
+            Node(&'a Node),
+            CellReferenceIndex(CellReferenceIndex),
+        }
         println!("evaluate_node_in_context_2: {cell:?}");
-
         let mut traversal_stack = Vec::new();
         let mut visited_traversal_stack_indexes = Vec::new();
         let mut evaluation_stack = Vec::new();
 
-        traversal_stack.push(node);
+        traversal_stack.push(TraversalStackEntry::Node(node));
         println!("initial state:\ntraversal stack: {traversal_stack:#?}\nevaluation stack: {evaluation_stack:?}");
 
         // FIXME
-        let mut iters_remaining: u32 = 15;
-        let mut prev_node = None;
+        let mut iters_remaining: u32 = 100;
         while !traversal_stack.is_empty() {
             if iters_remaining == 0 { panic!("Iter limit reached"); }
-            prev_node = Some(
-                visit(
-                    &mut self.workbook.worksheets,
-                    &self.parsed_formulas,
-                    &mut traversal_stack,
-                    &mut visited_traversal_stack_indexes,
-                    &mut evaluation_stack,
-                    &cell,
-                    prev_node));
+            visit(
+                &mut self.workbook.worksheets,
+                &self.parsed_formulas,
+                &mut traversal_stack,
+                &mut visited_traversal_stack_indexes,
+                &mut evaluation_stack,
+                &cell);
             iters_remaining -= 1;
         }
         println!("AND THE RESULT IS:\n{evaluation_stack:?}");
@@ -304,33 +305,36 @@ impl Model {
         //   - Pop from traversal stack
         //   - Pop operands from evaluation stack
         //   - Evaluate and push result to evaluation stack
-        fn visit<'a>(
+        fn visit<'a, 'b>(
             worksheets: &mut Vec<Worksheet>,
             parsed_formulas: &'a Vec<Vec<Node>>,
-            traversal_stack: &mut Vec<&'a Node>,
+            traversal_stack: &'b mut Vec<TraversalStackEntry<'a>>,
             visited_traversal_stack_indexes: &mut Vec<usize>,
             evaluation_stack: &mut Vec<CalcResult>,
             cell: &CellReferenceIndex,
-            prev_node: Option<&Node>
-        ) -> &'a Node {
+        ) {
             assert!(visited_traversal_stack_indexes.len() <= traversal_stack.len());
 
-            let current_node = *traversal_stack.last().expect("traversal stack to be non-empty");
             let second_visit = visited_traversal_stack_indexes.last().is_some_and(|i| *i == traversal_stack.len() - 1);
-            if second_visit {
-                traversal_stack.pop().expect("traversal stack to be non-empty");
+
+            let current_node = if second_visit {
+                let result = traversal_stack.pop().expect("traversal stack to be non-empty");
                 let traversal_stack_index = visited_traversal_stack_indexes.pop()
                     .expect("visited traversal stack indexes to be non-empty");
                 assert_eq!(traversal_stack.len(), traversal_stack_index);
-            }
+                result
+            } else {
+                // FIXME: Can I remove this clone?
+                traversal_stack.last_mut().expect("traversal stack to be non-empty").clone()
+            };
             match current_node {
-                Node::OpSumKind { kind, left, right } => {
+                TraversalStackEntry::Node(Node::OpSumKind { kind, left, right }) => {
                     if !second_visit {
                         // Traverse
                         visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
-                        traversal_stack.push(right.as_ref());
-                        traversal_stack.push(left.as_ref());
-                        println!("Traversed OpSumKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                        traversal_stack.push(TraversalStackEntry::Node(right.as_ref()));
+                        traversal_stack.push(TraversalStackEntry::Node(left.as_ref()));
+                        print_state("Traversed OpSumKind", traversal_stack, evaluation_stack);
                     } else {
                         // Evaluate
                         let left = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
@@ -338,23 +342,23 @@ impl Model {
                         let right = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
                             .expect("FIXME");
                         evaluation_stack.push(CalcResult::Number(left + right));
-                        println!("Evaluated OpSumKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                        print_state("Evaluated OpSumKind", traversal_stack, evaluation_stack);
                     }
                 },
-                Node::NumberKind(num) => {
+                TraversalStackEntry::Node(Node::NumberKind(num)) => {
                     // Evaluate: Never any children, always evaluate
                     traversal_stack.pop().expect("traversal stack to be non-empty");
                     evaluation_stack.push(CalcResult::Number(*num));
-                    println!("Evaluated NumberKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                    print_state("Evaluated NumberKind", traversal_stack, evaluation_stack);
                 },
-                Node::ReferenceKind {
+                TraversalStackEntry::Node(Node::ReferenceKind {
                     sheet_name: _,
                     sheet_index,
                     absolute_row,
                     absolute_column,
                     row,
                     column,
-                } => {
+                }) => {
                     // Cases:
                     //   1. First visit, cell is Cell::CellFormula (an unevaluated formula)
                     //   2. First visit, cell is not Cell::CellFormula
@@ -386,17 +390,17 @@ impl Model {
                         .get_mut(&referenced_cell.row)
                         .and_then(|row| row.get_mut(&referenced_cell.column));
 
-                    if !second_visit && matches!(cell, Some(Cell::CellFormula { f, s })) {
+                    if !second_visit && matches!(cell, Some(Cell::CellFormula { f: _, s: _ })) {
                         // Case 1 
                         // Traverse:
                         match cell {
-                            Some(Cell::CellFormula { f, s }) => {
+                            Some(Cell::CellFormula { f, s: _ }) => {
                                 // FIXME: probably best to avoid using get_formula here, as it has logic we don't need.
                                 // FIXME: this logic around the Option<Cell> could be cleaned up to avoid the unwrap
                                 visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
                                 let formula_node = &parsed_formulas[referenced_cell.sheet as usize][*f as usize];                    
-                                traversal_stack.push(formula_node);
-                                println!("Traversed ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula):\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                                traversal_stack.push(TraversalStackEntry::Node(formula_node));
+                                print_state(&format!("Traversed ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula)") , traversal_stack, evaluation_stack);
                             },
                             _ => unreachable!(),
                         }
@@ -451,7 +455,7 @@ impl Model {
                                 CellFormulaBoolean { v, .. } => CalcResult::Boolean(*v),
                                 CellFormulaNumber { v, .. } => CalcResult::Number(*v),
                                 CellFormulaString { v, .. } => CalcResult::String(v.clone()),
-                                CellFormulaError { ei, o, m, .. } => {
+                                CellFormulaError { .. } => {
                                     panic!(); // FIXME:
                                     // if let Some(cell_reference) = self.parse_reference(o) {
                                     //     CalcResult::new_error(ei.clone(), cell_reference, m.clone())
@@ -467,28 +471,97 @@ impl Model {
                             }
                         };
                         evaluation_stack.push(calc_result);
-                        println!("Evaluated ReferenceKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                        print_state("Evaluated ReferenceKind", traversal_stack, evaluation_stack);
                     }
                 }
-                Node::FunctionKind { kind, args } => {
+                TraversalStackEntry::Node(Node::FunctionKind { kind, args }) => {
                     if !second_visit {
                         // Traverse
                         visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
-                        traversal_stack.extend(args.iter().rev());
+                        traversal_stack.extend(args.iter().rev().map(|arg| TraversalStackEntry::Node(arg)));
                         println!("Traversed FunctionKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     } else {
                         // Split off the args from the eval stack needed for this function
                         let args = evaluation_stack.split_off(evaluation_stack.len() - args.len());
-                        evaluation_stack.push(evaluate_function_new(&worksheets, kind, args, *cell));
+                        evaluation_stack.push(evaluate_function_new(&worksheets, &kind, args, *cell));
                         println!("Traversed FunctionKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
                     }
                 },
+                TraversalStackEntry::Node(Node::RangeKind {
+                    sheet_index,
+                    row1,
+                    column1,
+                    row2,
+                    column2,
+                    absolute_column1,
+                    absolute_row2,
+                    absolute_row1,
+                    absolute_column2,
+                    sheet_name: _,
+                }) => {
+                    let absolute_row1 = if *absolute_row1 {
+                        *row1
+                    } else {
+                        *row1 + cell.row
+                    };
+                    let absolute_column1 = if *absolute_column1 {
+                        *column1
+                    } else {
+                        *column1 + cell.column
+                    };
+                    let absolute_row2 = if *absolute_row2 {
+                        *row2
+                    } else {
+                        *row2 + cell.row
+                    };
+                    let absolute_column2 = if *absolute_column2 {
+                        *column2
+                    } else {
+                        *column2 + cell.column
+                    };
+                    // FIXME: Handle absolute/nonabsolute
+                    if !second_visit {
+                        // Traverse
+                        // Add all cells in range to traversal stack
+                        visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
+                        for row in absolute_row1..=absolute_row2 {
+                            for column in absolute_column1..=absolute_column2 {
+                                let cell_reference = CellReferenceIndex {
+                                    sheet: *sheet_index,
+                                    row,
+                                    column,
+                                };
+                                traversal_stack.push(TraversalStackEntry::CellReferenceIndex(cell_reference));
+                            }
+                        }
+                    }
+                    // Evaluate
+                    let calc_result = CalcResult::Range {
+                        left: CellReferenceIndex {
+                            sheet: *sheet_index,
+                            row: absolute_row1,
+                            column: absolute_column1,
+                        },
+                        right: CellReferenceIndex {
+                            sheet: *sheet_index,
+                            row: absolute_row2,
+                            column: absolute_column2,
+                        },
+                    };
+
+                    traversal_stack.pop();
+                    evaluation_stack.push(calc_result);
+                    print_state("Evaluated RangeKind", traversal_stack, evaluation_stack);
+                },
                 _ => { 
-                    println!("UnhandledKind:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+                    print_state("UnhandledKind", traversal_stack, evaluation_stack);
                     panic!("FIXME: Unhandled node type");
                  }
             }
-            current_node
+
+            fn print_state(prefix: &str, traversal_stack: &Vec<TraversalStackEntry>, evaluation_stack: &Vec<CalcResult>) {
+                println!("{prefix}:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+            }
         }
     }
 

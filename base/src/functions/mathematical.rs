@@ -54,7 +54,7 @@ pub(crate) fn fn_sum(worksheets: &Vec<Worksheet>, args: &[CalcResult], cell: Cel
                         // Get value in cell. the cell is already evaluated so just fetch the value
                         worksheet.sheet_data[&row][&column].cast_to_number().map(|value| {
                             result += value;
-                        });
+                        }).expect("FIXME");
                     }
                 }
             }
