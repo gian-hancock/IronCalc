@@ -334,7 +334,7 @@ impl Model {
                         visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
                         traversal_stack.push(TraversalStackEntry::Node(right.as_ref()));
                         traversal_stack.push(TraversalStackEntry::Node(left.as_ref()));
-                        print_state("Traversed OpSumKind", traversal_stack, evaluation_stack);
+                        print_state("Traversed OpSumKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                     } else {
                         // Evaluate
                         let left = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
@@ -342,14 +342,14 @@ impl Model {
                         let right = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
                             .expect("FIXME");
                         evaluation_stack.push(CalcResult::Number(left + right));
-                        print_state("Evaluated OpSumKind", traversal_stack, evaluation_stack);
+                        print_state("Evaluated OpSumKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                     }
                 },
                 TraversalStackEntry::Node(Node::NumberKind(num)) => {
                     // Evaluate: Never any children, always evaluate
                     traversal_stack.pop().expect("traversal stack to be non-empty");
                     evaluation_stack.push(CalcResult::Number(*num));
-                    print_state("Evaluated NumberKind", traversal_stack, evaluation_stack);
+                    print_state("Evaluated NumberKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                 },
                 TraversalStackEntry::Node(Node::ReferenceKind {
                     sheet_name: _,
@@ -359,18 +359,6 @@ impl Model {
                     row,
                     column,
                 }) => {
-                    // Cases:
-                    //   1. First visit, cell is Cell::CellFormula (an unevaluated formula)
-                    //   2. First visit, cell is not Cell::CellFormula
-                    //   3. Second visit, cell is Cell::CellFormula
-                    //   4. Second visit, cell is not Cell::CellFormula.
-                    // 
-                    // Case 1: Traverse
-                    // Case 2: Evaluate immediately without visiting
-                    // Case 3: Evaluate using top value from evaluation stack. With side effect of setting cell value
-                    //         to one of the Cell::CellFormula<type> cases.
-                    // Case 4: Impossible
-
                     // Get referenced cell
                     let mut row1 = *row;
                     let mut column1 = *column;
@@ -385,94 +373,15 @@ impl Model {
                         row: row1,
                         column: column1,
                     };
-                    let cell = worksheets[referenced_cell.sheet as usize]
-                        .sheet_data
-                        .get_mut(&referenced_cell.row)
-                        .and_then(|row| row.get_mut(&referenced_cell.column));
-
-                    if !second_visit && matches!(cell, Some(Cell::CellFormula { f: _, s: _ })) {
-                        // Case 1 
-                        // Traverse:
-                        match cell {
-                            Some(Cell::CellFormula { f, s: _ }) => {
-                                // FIXME: probably best to avoid using get_formula here, as it has logic we don't need.
-                                // FIXME: this logic around the Option<Cell> could be cleaned up to avoid the unwrap
-                                visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
-                                let formula_node = &parsed_formulas[referenced_cell.sheet as usize][*f as usize];                    
-                                traversal_stack.push(TraversalStackEntry::Node(formula_node));
-                                print_state(&format!("Traversed ReferenceKind referencing [{row1}, {column1}](Cell::CellFormula)") , traversal_stack, evaluation_stack);
-                            },
-                            _ => unreachable!(),
-                        }
-                    } else {
-                        // Case 2 or 3:
-                        // Evaluate
-                        let calc_result = if let Some(Cell::CellFormula { f, s }) = cell {
-                            // Case 3
-                            assert!(second_visit, "Expect not case 1");
-                            let calc_result = evaluation_stack.pop().expect("evaluation stack to be non-empty");
-                            // Set cell from Cell::CellFormula to one of the evaluated formula types.
-                            *cell.unwrap() = match calc_result {
-                                CalcResult::String(ref v) => Cell::CellFormulaString{ f: *f, s: *s, v: v.clone() },
-                                CalcResult::Number(v) => Cell::CellFormulaNumber{ f: *f, s: *s, v: v},
-                                CalcResult::Boolean(v) => Cell::CellFormulaBoolean{ f: *f, s: *s, v: v},
-                                _ => panic!("FIXME"),
-                            };
-                            calc_result
-                        } else {
-                            // Case 2:
-                            assert!(!second_visit, "Expect not case 4");
-
-                            traversal_stack.pop().expect("traversal stack to be non-empty");
-                            // FIXME logic around the optional cell could be cleaned up to avoid the unwrap
-                            // FIXME pulled from get_cell_value(). Consider pulling into common function.
-                            use Cell::*;
-                            // FIXME: Remove unwrap, handle reference to non-existing cell
-                            match cell.unwrap() {
-                                EmptyCell { .. } => CalcResult::EmptyCell,
-                                BooleanCell { v, .. } => CalcResult::Boolean(*v),
-                                NumberCell { v, .. } => CalcResult::Number(*v),
-                                ErrorCell { ei, .. } => {
-                                    panic!(); // FIXME
-                                    // let message = ei.to_localized_error_string(&self.language);
-                                    // CalcResult::new_error(ei.clone(), cell_reference, message)
-                                }
-                                SharedString { si, .. } => {
-                                    panic!(); // FIXME
-                                    // if let Some(s) = self.workbook.shared_strings.get(*si as usize) {
-                                    //     CalcResult::String(s.clone())
-                                    // } else {
-                                    //     let message = "Invalid shared string".to_string();
-                                    //     CalcResult::new_error(Error::ERROR, cell_reference, message)
-                                    // }
-                                }
-                                // FIXME: Shouldn't have to handle cell formula, it should be an already evaluated cell
-                                // CellFormula { .. } => CalcResult::Error {
-                                //     error: Error::ERROR,
-                                //     origin: cell_reference,
-                                //     message: "Unevaluated formula".to_string(),
-                                // },
-                                CellFormulaBoolean { v, .. } => CalcResult::Boolean(*v),
-                                CellFormulaNumber { v, .. } => CalcResult::Number(*v),
-                                CellFormulaString { v, .. } => CalcResult::String(v.clone()),
-                                CellFormulaError { .. } => {
-                                    panic!(); // FIXME:
-                                    // if let Some(cell_reference) = self.parse_reference(o) {
-                                    //     CalcResult::new_error(ei.clone(), cell_reference, m.clone())
-                                    // } else {
-                                    //     CalcResult::Error {
-                                    //         error: ei.clone(),
-                                    //         origin: cell_reference,
-                                    //         message: ei.to_localized_error_string(&self.language),
-                                    //     }
-                                    // }
-                                }
-                                _ => panic!(),
-                            }
-                        };
-                        evaluation_stack.push(calc_result);
-                        print_state("Evaluated ReferenceKind", traversal_stack, evaluation_stack);
-                    }
+                    visit_cell_reference_index(
+                        &referenced_cell,
+                        worksheets,
+                        second_visit,
+                        visited_traversal_stack_indexes,
+                        traversal_stack,
+                        evaluation_stack,
+                        parsed_formulas,);
+                        print_state("Evaluated ReferenceKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                 }
                 TraversalStackEntry::Node(Node::FunctionKind { kind, args }) => {
                     if !second_visit {
@@ -519,7 +428,6 @@ impl Model {
                     } else {
                         *column2 + cell.column
                     };
-                    // FIXME: Handle absolute/nonabsolute
                     if !second_visit {
                         // Traverse
                         // Add all cells in range to traversal stack
@@ -534,33 +442,163 @@ impl Model {
                                 traversal_stack.push(TraversalStackEntry::CellReferenceIndex(cell_reference));
                             }
                         }
+                        print_state("Traversed RangeKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                     }
-                    // Evaluate
-                    let calc_result = CalcResult::Range {
-                        left: CellReferenceIndex {
-                            sheet: *sheet_index,
-                            row: absolute_row1,
-                            column: absolute_column1,
-                        },
-                        right: CellReferenceIndex {
-                            sheet: *sheet_index,
-                            row: absolute_row2,
-                            column: absolute_column2,
-                        },
-                    };
-
-                    traversal_stack.pop();
-                    evaluation_stack.push(calc_result);
-                    print_state("Evaluated RangeKind", traversal_stack, evaluation_stack);
+                    else {
+                        // Evaluate
+                        let calc_result = CalcResult::Range {
+                            left: CellReferenceIndex {
+                                sheet: *sheet_index,
+                                row: absolute_row1,
+                                column: absolute_column1,
+                            },
+                            right: CellReferenceIndex {
+                                sheet: *sheet_index,
+                                row: absolute_row2,
+                                column: absolute_column2,
+                            },
+                        };
+                        evaluation_stack.push(calc_result);
+                        print_state("Evaluated RangeKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
+                    }
+                },
+                TraversalStackEntry::CellReferenceIndex(cell_reference_index) => {
+                    visit_cell_reference_index(
+                        &cell_reference_index,
+                        worksheets,
+                        second_visit,
+                        visited_traversal_stack_indexes,
+                        traversal_stack,
+                        evaluation_stack,
+                        &parsed_formulas,);
+                        // FIXME: HACK: We don't actually need the evaluated value here, we just need to make sure the 
+                        // cell has been evaluated.
+                        evaluation_stack.pop();
+                        print_state("Evaluated CellReferenceIndex", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                 },
                 _ => { 
-                    print_state("UnhandledKind", traversal_stack, evaluation_stack);
+                    print_state("UnhandledKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                     panic!("FIXME: Unhandled node type");
                  }
             }
 
-            fn print_state(prefix: &str, traversal_stack: &Vec<TraversalStackEntry>, evaluation_stack: &Vec<CalcResult>) {
-                println!("{prefix}:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}");
+            // Function to handle a CellReferenceIndex in visit. Operates the same as the ReferenceKind node.
+            fn visit_cell_reference_index<'a>(
+                referenced_cell: &CellReferenceIndex, 
+                worksheets: &mut Vec<Worksheet>, 
+                second_visit: bool, 
+                visited_traversal_stack_indexes: &mut Vec<usize>,
+                traversal_stack: &mut Vec<TraversalStackEntry<'a>>,
+                evaluation_stack: &mut Vec<CalcResult>,
+                parsed_formulas: &'a Vec<Vec<Node>>) {
+                // Cases:
+                //   1. First visit, cell is Cell::CellFormula (an unevaluated formula)
+                //   2. First visit, cell is not Cell::CellFormula
+                //   3. Second visit, cell is Cell::CellFormula
+                //   4. Second visit, cell is not Cell::CellFormula.
+                // 
+                // Case 1: Traverse
+                // Case 2: Evaluate immediately without visiting
+                // Case 3: Evaluate using top value from evaluation stack. With side effect of setting cell value
+                //         to one of the Cell::CellFormula<type> cases.
+                // Case 4: Impossible
+
+                let cell = worksheets[referenced_cell.sheet as usize]
+                    .sheet_data
+                    .get_mut(&referenced_cell.row)
+                    .and_then(|row| row.get_mut(&referenced_cell.column));
+
+                if !second_visit && matches!(cell, Some(Cell::CellFormula { f: _, s: _ })) {
+                    // Case 1 
+                    // Traverse:
+                    match cell {
+                        Some(Cell::CellFormula { f, s: _ }) => {
+                            // FIXME: probably best to avoid using get_formula here, as it has logic we don't need.
+                            // FIXME: this logic around the Option<Cell> could be cleaned up to avoid the unwrap
+                            visited_traversal_stack_indexes.push(traversal_stack.len() - 1);
+                            let formula_node = &parsed_formulas[referenced_cell.sheet as usize][*f as usize];                    
+                            traversal_stack.push(TraversalStackEntry::Node(formula_node));
+                            print_state(
+                                &format!("Traversed ReferenceKind referencing [{}, {}](Cell::CellFormula)", referenced_cell.row, referenced_cell.column), 
+                                traversal_stack, 
+                                evaluation_stack,
+                                visited_traversal_stack_indexes);
+                        },
+                        _ => unreachable!(),
+                    }
+                } else {
+                    // Case 2 or 3:
+                    // Evaluate
+                    let calc_result = if let Some(Cell::CellFormula { f, s }) = cell {
+                        // Case 3
+                        assert!(second_visit, "Expect not case 1");
+                        let calc_result = evaluation_stack.pop().expect("evaluation stack to be non-empty");
+                        // Set cell from Cell::CellFormula to one of the evaluated formula types.
+                        *cell.unwrap() = match calc_result {
+                            CalcResult::String(ref v) => Cell::CellFormulaString{ f: *f, s: *s, v: v.clone() },
+                            CalcResult::Number(v) => Cell::CellFormulaNumber{ f: *f, s: *s, v: v},
+                            CalcResult::Boolean(v) => Cell::CellFormulaBoolean{ f: *f, s: *s, v: v},
+                            _ => panic!("FIXME"),
+                        };
+                        calc_result
+                    } else {
+                        // Case 2:
+                        assert!(!second_visit, "Expect not case 4");
+
+                        traversal_stack.pop().expect("traversal stack to be non-empty");
+                        // FIXME logic around the optional cell could be cleaned up to avoid the unwrap
+                        // FIXME pulled from get_cell_value(). Consider pulling into common function.
+                        use Cell::*;
+                        // FIXME: Remove unwrap, handle reference to non-existing cell
+                        match cell {
+                            Some(EmptyCell { .. }) => CalcResult::EmptyCell,
+                            Some(BooleanCell { v, .. }) => CalcResult::Boolean(*v),
+                            Some(NumberCell { v, .. }) => CalcResult::Number(*v),
+                            Some(ErrorCell {  .. }) => {
+                                panic!(); // FIXME
+                                // let message = ei.to_localized_error_string(&self.language);
+                                // CalcResult::new_error(ei.clone(), cell_reference, message)
+                            }
+                            Some(SharedString { .. }) => {
+                                panic!(); // FIXME
+                                // if let Some(s) = self.workbook.shared_strings.get(*si as usize) {
+                                //     CalcResult::String(s.clone())
+                                // } else {
+                                //     let message = "Invalid shared string".to_string();
+                                //     CalcResult::new_error(Error::ERROR, cell_reference, message)
+                                // }
+                            }
+                            // FIXME: Shouldn't have to handle cell formula, it should be an already evaluated cell
+                            // Some(CellFormula { .. }) => CalcResult::Error {
+                            //     error: Error::ERROR,
+                            //     origin: cell_reference,
+                            //     message: "Unevaluated formula".to_string(),
+                            // },
+                            Some(CellFormulaBoolean { v, .. }) => CalcResult::Boolean(*v),
+                            Some(CellFormulaNumber { v, .. }) => CalcResult::Number(*v),
+                            Some(CellFormulaString { v, .. }) => CalcResult::String(v.clone()),
+                            Some(CellFormulaError { .. }) => {
+                                panic!(); // FIXME:
+                                // if let Some(cell_reference) = self.parse_reference(o) {
+                                //     CalcResult::new_error(ei.clone(), cell_reference, m.clone())
+                                // } else {
+                                //     CalcResult::Error {
+                                //         error: ei.clone(),
+                                //         origin: cell_reference,
+                                //         message: ei.to_localized_error_string(&self.language),
+                                //     }
+                                // }
+                            }
+                            None => CalcResult::EmptyCell,
+                            _ => panic!(),
+                        }
+                    };
+                    evaluation_stack.push(calc_result);
+                }
+            }
+
+            fn print_state(prefix: &str, traversal_stack: &Vec<TraversalStackEntry>, evaluation_stack: &Vec<CalcResult>, visited_traversal_stack_indexes: &Vec<usize>) {
+                println!("{prefix}:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}\nvisited: {visited_traversal_stack_indexes:?}");
             }
         }
     }

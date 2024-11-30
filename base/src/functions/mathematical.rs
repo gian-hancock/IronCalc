@@ -51,10 +51,11 @@ pub(crate) fn fn_sum(worksheets: &Vec<Worksheet>, args: &[CalcResult], cell: Cel
                 }
                 for row in row1..row2 + 1 {
                     for column in column1..(column2 + 1) {
-                        // Get value in cell. the cell is already evaluated so just fetch the value
-                        worksheet.sheet_data[&row][&column].cast_to_number().map(|value| {
-                            result += value;
-                        }).expect("FIXME");
+                        if let Some(cell) = worksheet.sheet_data.get(&row).and_then(|r| r.get(&column)) {
+                            cell.cast_to_number().map(|value| {
+                                result += value;
+                            }).expect("FIXME");
+                        }
                     }
                 }
             }
