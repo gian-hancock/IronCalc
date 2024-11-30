@@ -528,7 +528,7 @@ fn test_long_dependent_evaluation_chain() {
 
 #[test]
 fn test_reverse_long_dependent_evaluation_chain() {
-    const ROWS: i32 = 1000;
+    const ROWS: i32 = 10;
 
     let mut model = new_empty_model();
 

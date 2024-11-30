@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, u32};
 use std::vec::Vec;
 
 use crate::{
@@ -270,7 +270,7 @@ impl Model {
         println!("initial state:\ntraversal stack: {traversal_stack:#?}\nevaluation stack: {evaluation_stack:?}");
 
         // FIXME
-        let mut iters_remaining: u32 = 100;
+        let mut iters_remaining: u32 = u32::MAX;
         while !traversal_stack.is_empty() {
             if iters_remaining == 0 { panic!("Iter limit reached"); }
             visit(
@@ -341,6 +341,7 @@ impl Model {
                             .expect("FIXME");
                         let right = evaluation_stack.pop().expect("evaluation stack to be non-empty").as_number()
                             .expect("FIXME");
+                        // FIXME: support + and - operators
                         evaluation_stack.push(CalcResult::Number(left + right));
                         print_state("Evaluated OpSumKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                     }
@@ -350,6 +351,18 @@ impl Model {
                     traversal_stack.pop().expect("traversal stack to be non-empty");
                     evaluation_stack.push(CalcResult::Number(*num));
                     print_state("Evaluated NumberKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
+                },
+                TraversalStackEntry::Node(Node::StringKind(s)) => {
+                    // Evaluate: Never any children, always evaluate
+                    traversal_stack.pop().expect("traversal stack to be non-empty");
+                    evaluation_stack.push(CalcResult::String(s.clone()));
+                    print_state("Evaluated StringKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
+                },
+                TraversalStackEntry::Node(Node::BooleanKind(b)) => {
+                    // Evaluate: Never any children, always evaluate
+                    traversal_stack.pop().expect("traversal stack to be non-empty");
+                    evaluation_stack.push(CalcResult::Boolean(*b));
+                    print_state("Evaluated BooleanKind", traversal_stack, evaluation_stack, visited_traversal_stack_indexes);
                 },
                 TraversalStackEntry::Node(Node::ReferenceKind {
                     sheet_name: _,
@@ -598,7 +611,7 @@ impl Model {
             }
 
             fn print_state(prefix: &str, traversal_stack: &Vec<TraversalStackEntry>, evaluation_stack: &Vec<CalcResult>, visited_traversal_stack_indexes: &Vec<usize>) {
-                println!("{prefix}:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}\nvisited: {visited_traversal_stack_indexes:?}");
+                // println!("{prefix}:\ntraversal: {traversal_stack:#?}\nevaluation: {evaluation_stack:?}\nvisited: {visited_traversal_stack_indexes:?}");
             }
         }
     }
