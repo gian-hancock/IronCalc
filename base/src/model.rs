@@ -686,18 +686,23 @@ impl Model {
         Ok(())
     }
 
-    fn get_cell_value(&self, cell: &Cell, cell_reference: CellReferenceIndex) -> CalcResult {
+    fn get_cell_value(
+        language: &Language,
+        workbook: &Workbook,
+        cell: &Cell,
+        cell_reference: CellReferenceIndex,
+    ) -> CalcResult {
         use Cell::*;
         match cell {
             EmptyCell { .. } => CalcResult::EmptyCell,
             BooleanCell { v, .. } => CalcResult::Boolean(*v),
             NumberCell { v, .. } => CalcResult::Number(*v),
             ErrorCell { ei, .. } => {
-                let message = ei.to_localized_error_string(&self.language);
+                let message = ei.to_localized_error_string(language);
                 CalcResult::new_error(ei.clone(), cell_reference, message)
             }
             SharedString { si, .. } => {
-                if let Some(s) = self.workbook.shared_strings.get(*si as usize) {
+                if let Some(s) = workbook.shared_strings.get(*si as usize) {
                     CalcResult::String(s.clone())
                 } else {
                     let message = "Invalid shared string".to_string();
@@ -713,13 +718,13 @@ impl Model {
             CellFormulaNumber { v, .. } => CalcResult::Number(*v),
             CellFormulaString { v, .. } => CalcResult::String(v.clone()),
             CellFormulaError { ei, o, m, .. } => {
-                if let Some(cell_reference) = Model::parse_reference(&self.workbook, o) {
+                if let Some(cell_reference) = Model::parse_reference(workbook, o) {
                     CalcResult::new_error(ei.clone(), cell_reference, m.clone())
                 } else {
                     CalcResult::Error {
                         error: ei.clone(),
                         origin: cell_reference,
-                        message: ei.to_localized_error_string(&self.language),
+                        message: ei.to_localized_error_string(language),
                     }
                 }
             }
@@ -775,7 +780,7 @@ impl Model {
                         );
                     }
                     Some(CellState::Evaluated) => {
-                        return self.get_cell_value(cell, cell_reference);
+                        return Model::get_cell_value(&self.language, &self.workbook, cell, cell_reference);
                     }
                     _ => {
                         // mark cell as being evaluated
@@ -789,7 +794,7 @@ impl Model {
                 self.cells.insert(key, CellState::Evaluated);
                 result
             }
-            None => self.get_cell_value(cell, cell_reference),
+            None => Model::get_cell_value(&self.language, &self.workbook, cell, cell_reference),
         }
     }
 
