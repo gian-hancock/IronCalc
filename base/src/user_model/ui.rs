@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::expressions::utils::{is_valid_column_number, is_valid_row};
+use crate::{expressions::utils::{is_valid_column_number, is_valid_row}, Model};
 
 use super::common::UserModel;
 
@@ -210,7 +210,7 @@ impl UserModel {
                     let mut width = 0.0;
                     let mut c = left_column;
                     while c <= new_column {
-                        width += self.model.get_column_width(sheet, c)?;
+                        width += Model::get_column_width(&self.model.workbook, sheet, c)?;
                         c += 1;
                     }
                     if width > window_width {
@@ -273,7 +273,7 @@ impl UserModel {
                     let mut height = 0.0;
                     let mut r = top_row;
                     while r <= new_row + 1 {
-                        height += self.model.get_row_height(sheet, r)?;
+                        height += Model::get_row_height(&self.model.workbook, sheet, r)?;
                         r += 1;
                     }
                     if height >= window_height {
@@ -372,7 +372,7 @@ impl UserModel {
         let mut width = 0.0;
         let mut column = view.left_column;
         while column <= new_column {
-            width += self.model.get_column_width(sheet, column)?;
+            width += Model::get_column_width(&self.model.workbook, sheet, column)?;
             column += 1;
         }
         if let Ok(worksheet) = self.model.workbook.worksheet_mut(sheet) {
@@ -475,7 +475,7 @@ impl UserModel {
         let mut height = 0.0;
         let mut row = view.top_row;
         while row <= new_row + 1 {
-            height += self.model.get_row_height(sheet, row)?;
+            height += Model::get_row_height(&self.model.workbook, sheet, row)?;
             row += 1;
         }
         if let Ok(worksheet) = self.model.workbook.worksheet_mut(sheet) {
@@ -508,7 +508,7 @@ impl UserModel {
         };
         let mut scroll_x = 0.0;
         for column in 1..view.left_column {
-            scroll_x += self.model.get_column_width(sheet, column)?;
+            scroll_x += Model::get_column_width(&self.model.workbook, sheet, column)?;
         }
         Ok(scroll_x)
     }
@@ -531,7 +531,7 @@ impl UserModel {
         };
         let mut scroll_y = 0.0;
         for row in 1..view.top_row {
-            scroll_y += self.model.get_row_height(sheet, row)?;
+            scroll_y += Model::get_row_height(&self.model.workbook, sheet, row)?;
         }
         Ok(scroll_y)
     }
@@ -554,10 +554,10 @@ impl UserModel {
             None => return Err("View not found".to_string()),
         };
         let mut last_row = view.top_row;
-        let mut height = self.model.get_row_height(sheet, last_row)?;
+        let mut height = Model::get_row_height(&self.model.workbook, sheet, last_row)?;
         while height <= window_height as f64 {
             last_row += 1;
-            height += self.model.get_row_height(sheet, last_row)?;
+            height += Model::get_row_height(&self.model.workbook, sheet, last_row)?;
         }
         if !is_valid_row(last_row) {
             return Ok(());
@@ -591,10 +591,10 @@ impl UserModel {
         };
 
         let mut first_row = view.top_row;
-        let mut height = self.model.get_row_height(sheet, first_row)?;
+        let mut height = Model::get_row_height(&self.model.workbook, sheet, first_row)?;
         while height <= window_height && first_row > 1 {
             first_row -= 1;
-            height += self.model.get_row_height(sheet, first_row)?;
+            height += Model::get_row_height(&self.model.workbook, sheet, first_row)?;
         }
 
         let row_delta = view.row - view.top_row;
@@ -643,12 +643,12 @@ impl UserModel {
             let mut width = 0.0;
             let mut column = left_column;
             while column <= target_column {
-                width += self.model.get_column_width(sheet, column)?;
+                width += Model::get_column_width(&self.model.workbook, sheet, column)?;
                 column += 1;
             }
 
             while width > window_width {
-                width -= self.model.get_column_width(sheet, new_left_column)?;
+                width -= Model::get_column_width(&self.model.workbook, sheet, new_left_column)?;
                 new_left_column += 1;
             }
         } else if target_column < new_left_column {
@@ -659,11 +659,11 @@ impl UserModel {
             let mut height = 0.0;
             let mut row = top_row;
             while row <= target_row {
-                height += self.model.get_row_height(sheet, row)?;
+                height += Model::get_row_height(&self.model.workbook, sheet, row)?;
                 row += 1;
             }
             while height > window_height {
-                height -= self.model.get_row_height(sheet, new_top_row)?;
+                height -= Model::get_row_height(&self.model.workbook, sheet, new_top_row)?;
                 new_top_row += 1;
             }
         } else if target_row < new_top_row {

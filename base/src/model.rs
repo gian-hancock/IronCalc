@@ -1283,7 +1283,7 @@ impl Model {
         } else {
             style_index
         };
-        self.set_cell_with_boolean(sheet, row, column, value, new_style_index)
+        Model::set_cell_with_boolean(&mut self.workbook, sheet, row, column, value, new_style_index)
     }
 
     /// Updates the value of a cell with a number
@@ -1325,7 +1325,7 @@ impl Model {
         } else {
             style_index
         };
-        self.set_cell_with_number(sheet, row, column, value, new_style_index)
+        Model::set_cell_with_number(&mut self.workbook, sheet, row, column, value, new_style_index)
     }
 
     /// Updates the formula of given cell
@@ -1571,27 +1571,27 @@ impl Model {
     }
 
     fn set_cell_with_boolean(
-        &mut self,
+        workbook: &mut Workbook,
         sheet: u32,
         row: i32,
         column: i32,
         value: bool,
         style: i32,
     ) -> Result<(), String> {
-        self.workbook
+        workbook
             .worksheet_mut(sheet)?
             .set_cell_with_boolean(row, column, value, style)
     }
 
     fn set_cell_with_number(
-        &mut self,
+        workbook: &mut Workbook,
         sheet: u32,
         row: i32,
         column: i32,
         value: f64,
         style: i32,
     ) -> Result<(), String> {
-        self.workbook
+        workbook
             .worksheet_mut(sheet)?
             .set_cell_with_number(row, column, value, style)
     }
@@ -1703,9 +1703,9 @@ impl Model {
     }
 
     /// Returns a list of all cells
-    pub fn get_all_cells(&self) -> Vec<CellIndex> {
+    pub fn get_all_cells(workbook: &Workbook) -> Vec<CellIndex> {
         let mut cells = Vec::new();
-        for (index, sheet) in self.workbook.worksheets.iter().enumerate() {
+        for (index, sheet) in workbook.worksheets.iter().enumerate() {
             let mut sorted_rows: Vec<_> = sheet.sheet_data.keys().collect();
             sorted_rows.sort_unstable();
             for row in sorted_rows {
@@ -1729,7 +1729,7 @@ impl Model {
         // clear all computation artifacts
         self.cells.clear();
 
-        let cells = self.get_all_cells();
+        let cells = Model::get_all_cells(&self.workbook);
 
         for cell in cells {
             self.evaluate_cell(CellReferenceIndex {
@@ -1843,8 +1843,8 @@ impl Model {
     }
 
     /// Returns data about the worksheets
-    pub fn get_worksheets_properties(&self) -> Vec<SheetProperties> {
-        self.workbook
+    pub fn get_worksheets_properties(workbook: &Workbook) -> Vec<SheetProperties> {
+        workbook
             .worksheets
             .iter()
             .map(|worksheet| SheetProperties {
@@ -1908,8 +1908,8 @@ impl Model {
     }
 
     /// Returns the number of frozen rows in `sheet`
-    pub fn get_frozen_rows_count(&self, sheet: u32) -> Result<i32, String> {
-        if let Some(worksheet) = self.workbook.worksheets.get(sheet as usize) {
+    pub fn get_frozen_rows_count(workbook: &Workbook, sheet: u32) -> Result<i32, String> {
+        if let Some(worksheet) = workbook.worksheets.get(sheet as usize) {
             Ok(worksheet.frozen_rows)
         } else {
             Err("Invalid sheet".to_string())
@@ -1917,8 +1917,8 @@ impl Model {
     }
 
     /// Return the number of frozen columns in `sheet`
-    pub fn get_frozen_columns_count(&self, sheet: u32) -> Result<i32, String> {
-        if let Some(worksheet) = self.workbook.worksheets.get(sheet as usize) {
+    pub fn get_frozen_columns_count(workbook: &Workbook, sheet: u32) -> Result<i32, String> {
+        if let Some(worksheet) = workbook.worksheets.get(sheet as usize) {
             Ok(worksheet.frozen_columns)
         } else {
             Err("Invalid sheet".to_string())
@@ -1927,8 +1927,8 @@ impl Model {
 
     /// Sets the number of frozen rows to `frozen_rows` in the workbook.
     /// Fails if `frozen`_rows` is either too small (<0) or too large (>LAST_ROW)`
-    pub fn set_frozen_rows(&mut self, sheet: u32, frozen_rows: i32) -> Result<(), String> {
-        if let Some(worksheet) = self.workbook.worksheets.get_mut(sheet as usize) {
+    pub fn set_frozen_rows(workbook: &mut Workbook, sheet: u32, frozen_rows: i32) -> Result<(), String> {
+        if let Some(worksheet) = workbook.worksheets.get_mut(sheet as usize) {
             if frozen_rows < 0 {
                 return Err("Frozen rows cannot be negative".to_string());
             }
@@ -1944,8 +1944,8 @@ impl Model {
 
     /// Sets the number of frozen columns to `frozen_column` in the workbook.
     /// Fails if `frozen`_columns` is either too small (<0) or too large (>LAST_COLUMN)`
-    pub fn set_frozen_columns(&mut self, sheet: u32, frozen_columns: i32) -> Result<(), String> {
-        if let Some(worksheet) = self.workbook.worksheets.get_mut(sheet as usize) {
+    pub fn set_frozen_columns(workbook: &mut Workbook, sheet: u32, frozen_columns: i32) -> Result<(), String> {
+        if let Some(worksheet) = workbook.worksheets.get_mut(sheet as usize) {
             if frozen_columns < 0 {
                 return Err("Frozen columns cannot be negative".to_string());
             }
@@ -1961,28 +1961,28 @@ impl Model {
 
     /// Returns the width of a column
     #[inline]
-    pub fn get_column_width(&self, sheet: u32, column: i32) -> Result<f64, String> {
-        self.workbook.worksheet(sheet)?.get_column_width(column)
+    pub fn get_column_width(workbook: &Workbook, sheet: u32, column: i32) -> Result<f64, String> {
+        workbook.worksheet(sheet)?.get_column_width(column)
     }
 
     /// Sets the width of a column
     #[inline]
-    pub fn set_column_width(&mut self, sheet: u32, column: i32, width: f64) -> Result<(), String> {
-        self.workbook
+    pub fn set_column_width(workbook: &mut Workbook, sheet: u32, column: i32, width: f64) -> Result<(), String> {
+        workbook
             .worksheet_mut(sheet)?
             .set_column_width(column, width)
     }
 
     /// Returns the height of a row
     #[inline]
-    pub fn get_row_height(&self, sheet: u32, row: i32) -> Result<f64, String> {
-        self.workbook.worksheet(sheet)?.row_height(row)
+    pub fn get_row_height(workbook: &Workbook, sheet: u32, row: i32) -> Result<f64, String> {
+        workbook.worksheet(sheet)?.row_height(row)
     }
 
     /// Sets the height of a row
     #[inline]
-    pub fn set_row_height(&mut self, sheet: u32, column: i32, height: f64) -> Result<(), String> {
-        self.workbook
+    pub fn set_row_height(workbook: &mut Workbook, sheet: u32, column: i32, height: f64) -> Result<(), String> {
+        workbook
             .worksheet_mut(sheet)?
             .set_row_height(column, height)
     }

@@ -71,7 +71,7 @@ impl Model {
             height: source_area.height,
         };
         // Walk over every formula
-        let cells = self.get_all_cells();
+        let cells = Model::get_all_cells(&self.workbook);
         for cell in cells {
             if let Some(f) = self
                 .workbook

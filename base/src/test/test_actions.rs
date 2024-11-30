@@ -204,10 +204,9 @@ fn test_delete_columns() {
 fn test_delete_column_width() {
     let mut model = new_empty_model();
     let (sheet, column) = (0, 5);
-    let normal_width = model.get_column_width(sheet, column).unwrap();
+    let normal_width = Model::get_column_width(&model.workbook, sheet, column).unwrap();
     // Set the width of one column to 5 times the normal width
-    assert!(model
-        .set_column_width(sheet, column, normal_width * 5.0)
+    assert!(Model::set_column_width(&mut model.workbook, sheet, column, normal_width * 5.0)
         .is_ok());
 
     // delete it
@@ -215,12 +214,12 @@ fn test_delete_column_width() {
 
     // all the columns around have the expected width
     assert_eq!(
-        model.get_column_width(sheet, column - 1).unwrap(),
+        Model::get_column_width(&model.workbook, sheet, column - 1).unwrap(),
         normal_width
     );
-    assert_eq!(model.get_column_width(sheet, column).unwrap(), normal_width);
+    assert_eq!(Model::get_column_width(&model.workbook, sheet, column).unwrap(), normal_width);
     assert_eq!(
-        model.get_column_width(sheet, column + 1).unwrap(),
+        Model::get_column_width(&model.workbook, sheet, column + 1).unwrap(),
         normal_width
     );
 }

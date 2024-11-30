@@ -116,60 +116,50 @@ impl PyModel {
     }
 
     pub fn get_column_width(&self, sheet: u32, column: i32) -> PyResult<f64> {
-        self.model
-            .get_column_width(sheet, column)
+        Model::get_column_width(&self.model.workbook, sheet, column)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     pub fn get_row_height(&self, sheet: u32, row: i32) -> PyResult<f64> {
-        self.model
-            .get_row_height(sheet, row)
+        Model::get_row_height(&self.model.workbook, sheet, row)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     pub fn set_column_width(&mut self, sheet: u32, column: i32, width: f64) -> PyResult<()> {
-        self.model
-            .set_column_width(sheet, column, width)
+        Model::set_column_width(&mut self.model.workbook, sheet, column, width)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     pub fn set_row_height(&mut self, sheet: u32, row: i32, height: f64) -> PyResult<()> {
-        self.model
-            .set_row_height(sheet, row, height)
+        Model::set_row_height(&mut self.model.workbook, sheet, row, height)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     // frozen rows/columns
 
     pub fn get_frozen_columns_count(&self, sheet: u32) -> PyResult<i32> {
-        self.model
-            .get_frozen_columns_count(sheet)
+        Model::get_frozen_columns_count(&self.model.workbook, sheet)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     pub fn get_frozen_rows_count(&self, sheet: u32) -> PyResult<i32> {
-        self.model
-            .get_frozen_rows_count(sheet)
+        Model::get_frozen_rows_count(&self.model.workbook, sheet)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     pub fn set_frozen_columns_count(&mut self, sheet: u32, column_count: i32) -> PyResult<()> {
-        self.model
-            .set_frozen_columns(sheet, column_count)
+        Model::set_frozen_columns(&mut self.model.workbook, sheet, column_count)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     pub fn set_frozen_rows_count(&mut self, sheet: u32, row_count: i32) -> PyResult<()> {
-        self.model
-            .set_frozen_rows(sheet, row_count)
+        Model::set_frozen_rows(&mut self.model.workbook, sheet, row_count)
             .map_err(|e| WorkbookError::new_err(e.to_string()))
     }
 
     // Manipulate sheets (add/remove/rename/change color)
     pub fn get_worksheets_properties(&self) -> PyResult<Vec<PySheetProperty>> {
-        Ok(self
-            .model
-            .get_worksheets_properties()
+        Ok(Model::get_worksheets_properties(&self.model.workbook)
             .into_iter()
             .map(|s| PySheetProperty {
                 name: s.name,

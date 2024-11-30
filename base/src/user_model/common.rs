@@ -373,7 +373,7 @@ impl UserModel {
         }];
 
         let line_count = value.split("\n").count();
-        let row_height = self.model.get_row_height(sheet, row)?;
+        let row_height = Model::get_row_height(&self.model.workbook, sheet, row)?;
         let cell_height = (line_count as f64) * DEFAULT_ROW_HEIGHT;
         if cell_height > row_height {
             diff_list.push(Diff::SetRowHeight {
@@ -382,7 +382,7 @@ impl UserModel {
                 new_value: cell_height,
                 old_value: row_height,
             });
-            self.model.set_row_height(sheet, row, cell_height)?;
+            Model::set_row_height(&mut self.model.workbook, sheet, row, cell_height)?;
         }
 
         self.push_diff_list(diff_list);
@@ -645,14 +645,14 @@ impl UserModel {
     /// See also:
     /// * [Model::set_column_width]
     pub fn set_column_width(&mut self, sheet: u32, column: i32, width: f64) -> Result<(), String> {
-        let old_value = self.model.get_column_width(sheet, column)?;
+        let old_value = Model::get_column_width(&self.model.workbook, sheet, column)?;
         self.push_diff_list(vec![Diff::SetColumnWidth {
             sheet,
             column,
             new_value: width,
             old_value,
         }]);
-        self.model.set_column_width(sheet, column, width)
+        Model::set_column_width(&mut self.model.workbook, sheet, column, width)
     }
 
     /// Sets the height of a row
@@ -660,14 +660,14 @@ impl UserModel {
     /// See also:
     /// * [Model::set_row_height]
     pub fn set_row_height(&mut self, sheet: u32, row: i32, height: f64) -> Result<(), String> {
-        let old_value = self.model.get_row_height(sheet, row)?;
+        let old_value = Model::get_row_height(&self.model.workbook, sheet, row)?;
         self.push_diff_list(vec![Diff::SetRowHeight {
             sheet,
             row,
             new_value: height,
             old_value,
         }]);
-        self.model.set_row_height(sheet, row, height)
+        Model::set_row_height(&mut self.model.workbook, sheet, row, height)
     }
 
     /// Gets the height of a row
@@ -676,7 +676,7 @@ impl UserModel {
     /// * [Model::get_row_height]
     #[inline]
     pub fn get_row_height(&self, sheet: u32, row: i32) -> Result<f64, String> {
-        self.model.get_row_height(sheet, row)
+        Model::get_row_height(&self.model.workbook, sheet, row)
     }
 
     /// Gets the width of a column
@@ -685,7 +685,7 @@ impl UserModel {
     /// * [Model::get_column_width]
     #[inline]
     pub fn get_column_width(&self, sheet: u32, column: i32) -> Result<f64, String> {
-        self.model.get_column_width(sheet, column)
+        Model::get_column_width(&self.model.workbook, sheet, column)
     }
 
     /// Returns the number of frozen rows in the sheet
@@ -694,7 +694,7 @@ impl UserModel {
     /// * [Model::get_frozen_rows_count()]
     #[inline]
     pub fn get_frozen_rows_count(&self, sheet: u32) -> Result<i32, String> {
-        self.model.get_frozen_rows_count(sheet)
+        Model::get_frozen_rows_count(&self.model.workbook,sheet)
     }
 
     /// Returns the number of frozen columns in the sheet
@@ -703,7 +703,7 @@ impl UserModel {
     /// * [Model::get_frozen_columns_count()]
     #[inline]
     pub fn get_frozen_columns_count(&self, sheet: u32) -> Result<i32, String> {
-        self.model.get_frozen_columns_count(sheet)
+        Model::get_frozen_columns_count(&self.model.workbook, sheet)
     }
 
     /// Sets the number of frozen rows in sheet
@@ -711,13 +711,13 @@ impl UserModel {
     /// See also:
     /// * [Model::set_frozen_rows()]
     pub fn set_frozen_rows_count(&mut self, sheet: u32, frozen_rows: i32) -> Result<(), String> {
-        let old_value = self.model.get_frozen_rows_count(sheet)?;
+        let old_value = Model::get_frozen_rows_count(&self.model.workbook,sheet)?;
         self.push_diff_list(vec![Diff::SetFrozenRowsCount {
             sheet,
             new_value: frozen_rows,
             old_value,
         }]);
-        self.model.set_frozen_rows(sheet, frozen_rows)
+        Model::set_frozen_rows(&mut self.model.workbook, sheet, frozen_rows)
     }
 
     /// Sets the number of frozen columns in sheet
@@ -729,13 +729,13 @@ impl UserModel {
         sheet: u32,
         frozen_columns: i32,
     ) -> Result<(), String> {
-        let old_value = self.model.get_frozen_columns_count(sheet)?;
+        let old_value = Model::get_frozen_columns_count(&self.model.workbook, sheet)?;
         self.push_diff_list(vec![Diff::SetFrozenColumnsCount {
             sheet,
             new_value: frozen_columns,
             old_value,
         }]);
-        self.model.set_frozen_columns(sheet, frozen_columns)
+        Model::set_frozen_columns(&mut self.model.workbook, sheet, frozen_columns)
     }
 
     /// Paste `styles` in the selected area
@@ -1324,7 +1324,7 @@ impl UserModel {
     /// * [Model::get_worksheets_properties]
     #[inline]
     pub fn get_worksheets_properties(&self) -> Vec<SheetProperties> {
-        self.model.get_worksheets_properties()
+        Model::get_worksheets_properties(& self.model.workbook)
     }
 
     /// Set the gid lines in the worksheet to visible (`true`) or hidden (`false`)
@@ -1599,13 +1599,13 @@ impl UserModel {
                     column,
                     new_value: _,
                     old_value,
-                } => self.model.set_column_width(*sheet, *column, *old_value)?,
+                } => Model::set_column_width(&mut self.model.workbook, *sheet, *column, *old_value)?,
                 Diff::SetRowHeight {
                     sheet,
                     row,
                     new_value: _,
                     old_value,
-                } => self.model.set_row_height(*sheet, *row, *old_value)?,
+                } => Model::set_row_height(&mut self.model.workbook, *sheet, *row, *old_value)?,
                 Diff::CellClearContents {
                     sheet,
                     row,
@@ -1691,12 +1691,12 @@ impl UserModel {
                     sheet,
                     new_value: _,
                     old_value,
-                } => self.model.set_frozen_rows(*sheet, *old_value)?,
+                } => Model::set_frozen_rows(&mut self.model.workbook, *sheet, *old_value)?,
                 Diff::SetFrozenColumnsCount {
                     sheet,
                     new_value: _,
                     old_value,
-                } => self.model.set_frozen_columns(*sheet, *old_value)?,
+                } => Model::set_frozen_columns(&mut self.model.workbook, *sheet, *old_value)?,
                 Diff::DeleteSheet { sheet: _ } => {
                     // do nothing
                 }
@@ -1754,7 +1754,7 @@ impl UserModel {
                     new_value,
                     old_value: _,
                 } => {
-                    self.model.set_column_width(*sheet, *column, *new_value)?;
+                    Model::set_column_width(&mut self.model.workbook, *sheet, *column, *new_value)?;
                 }
                 Diff::SetRowHeight {
                     sheet,
@@ -1762,7 +1762,7 @@ impl UserModel {
                     new_value,
                     old_value: _,
                 } => {
-                    self.model.set_row_height(*sheet, *row, *new_value)?;
+                    Model::set_row_height(&mut self.model.workbook, *sheet, *row, *new_value)?;
                 }
                 Diff::CellClearContents {
                     sheet,
@@ -1820,12 +1820,12 @@ impl UserModel {
                     sheet,
                     new_value,
                     old_value: _,
-                } => self.model.set_frozen_rows(*sheet, *new_value)?,
+                } => Model::set_frozen_rows(&mut self.model.workbook, *sheet, *new_value)?,
                 Diff::SetFrozenColumnsCount {
                     sheet,
                     new_value,
                     old_value: _,
-                } => self.model.set_frozen_columns(*sheet, *new_value)?,
+                } => Model::set_frozen_columns(&mut self.model.workbook, *sheet, *new_value)?,
                 Diff::DeleteSheet { sheet } => self.model.delete_sheet(*sheet)?,
                 Diff::NewSheet { index, name } => {
                     self.model.insert_sheet(name, *index, None)?;

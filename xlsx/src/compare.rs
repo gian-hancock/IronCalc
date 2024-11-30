@@ -52,7 +52,7 @@ pub fn compare(model1: &Model, model2: &Model) -> CompareResult<Vec<Diff>> {
         EPS
     };
     let mut diffs = Vec::new();
-    let cells = model1.get_all_cells();
+    let cells = Model::get_all_cells(&model1.workbook);
     for cell in cells {
         let sheet = cell.index;
         let row = cell.row;

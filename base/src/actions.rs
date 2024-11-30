@@ -14,7 +14,7 @@ impl Model {
     ///
     /// * `displace_data` - A reference to `DisplaceData` describing the displacement's direction and magnitude.
     fn displace_cells(&mut self, displace_data: &DisplaceData) {
-        let cells = self.get_all_cells();
+        let cells = Model::get_all_cells(&self.workbook);
         for cell in cells {
             self.shift_cell_formula(cell.index, cell.row, cell.column, displace_data);
         }

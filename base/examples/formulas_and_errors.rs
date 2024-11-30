@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Evaluate
     model.evaluate();
 
-    let cells = model.get_all_cells();
+    let cells = Model::get_all_cells(&model.workbook);
 
     let mut cells_count = 0;
     let mut formula_count = 0;
