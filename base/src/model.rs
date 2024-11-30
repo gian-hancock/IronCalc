@@ -899,7 +899,7 @@ impl Model {
         };
 
         model.parse_formulas();
-        model.parse_defined_names();
+        Model::parse_defined_names(&mut model.workbook, &model.locale, &mut model.parsed_defined_names);
 
         Ok(model)
     }

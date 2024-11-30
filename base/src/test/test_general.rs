@@ -5,6 +5,7 @@ use crate::cell::CellValue;
 use crate::number_format::to_excel_precision_str;
 
 use crate::test::util::new_empty_model;
+use crate::Model;
 
 #[test]
 fn test_empty_model() {
@@ -96,9 +97,9 @@ fn test_get_sheet_index_by_sheet_id() {
     let mut model = new_empty_model();
     model.new_sheet();
 
-    assert_eq!(model.get_sheet_index_by_sheet_id(1), Some(0));
-    assert_eq!(model.get_sheet_index_by_sheet_id(2), Some(1));
-    assert_eq!(model.get_sheet_index_by_sheet_id(1337), None);
+    assert_eq!(Model::get_sheet_index_by_sheet_id(&model.workbook, 1), Some(0));
+    assert_eq!(Model::get_sheet_index_by_sheet_id(&model.workbook, 2), Some(1));
+    assert_eq!(Model::get_sheet_index_by_sheet_id(&model.workbook, 1337), None);
 }
 
 #[test]

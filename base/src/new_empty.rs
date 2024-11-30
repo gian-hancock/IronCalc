@@ -14,7 +14,7 @@ use crate::{
         types::CellReferenceRC,
     },
     language::get_language,
-    locale::get_locale,
+    locale::{self, get_locale},
     model::{get_milliseconds_since_epoch, Model, ParsedDefinedName},
     types::{
         Metadata, SheetState, Workbook, WorkbookSettings, WorkbookView, Worksheet, WorksheetView,
@@ -101,14 +101,15 @@ impl Model {
     }
 
     pub(crate) fn parse_defined_names(&mut self) {
-        let mut parsed_defined_names = HashMap::new();
-        for defined_name in &self.workbook.defined_names {
+    pub(crate) fn parse_defined_names(workbook: &mut Workbook, locale: &locale::Locale, parsed_defined_names: &mut HashMap<(Option<u32>, String), ParsedDefinedName>) {
+        let mut new_parsed_defined_names = HashMap::new();
+        for defined_name in &workbook.defined_names {
             let parsed_defined_name_formula = if let Ok(reference) =
                 ParsedReference::parse_reference_formula(
                     None,
                     &defined_name.formula,
-                    &self.locale,
-                    |name| Model::get_sheet_index_by_name(&self.workbook, name),
+                    locale,
+                    |name| Model::get_sheet_index_by_name(workbook, name),
                 ) {
                 match reference {
                     ParsedReference::CellReference(cell_reference) => {
@@ -123,7 +124,7 @@ impl Model {
             };
 
             let local_sheet_index = if let Some(sheet_id) = defined_name.sheet_id {
-                if let Some(sheet_index) = self.get_sheet_index_by_sheet_id(sheet_id) {
+                if let Some(sheet_index) = Model::get_sheet_index_by_sheet_id(workbook, sheet_id) {
                     Some(sheet_index)
                 } else {
                     // TODO: Error: Sheet with given sheet_id not found.
@@ -133,13 +134,13 @@ impl Model {
                 None
             };
 
-            parsed_defined_names.insert(
+            new_parsed_defined_names.insert(
                 (local_sheet_index, defined_name.name.to_lowercase()),
                 parsed_defined_name_formula,
             );
         }
 
-        self.parsed_defined_names = parsed_defined_names;
+        *parsed_defined_names = new_parsed_defined_names;
     }
 
     /// Reparses all formulas and defined names
@@ -149,7 +150,7 @@ impl Model {
         self.parsed_formulas = vec![];
         self.parse_formulas();
         self.parsed_defined_names = HashMap::new();
-        self.parse_defined_names();
+        Model::parse_defined_names(&mut self.workbook, &self.locale, &mut self.parsed_defined_names);
         self.evaluate();
     }
 
@@ -316,16 +317,15 @@ impl Model {
     ///   * The sheet by sheet_id does not exists
     ///   * It is the last sheet
     pub fn delete_sheet_by_sheet_id(&mut self, sheet_id: u32) -> Result<(), String> {
-        if let Some(sheet_index) = self.get_sheet_index_by_sheet_id(sheet_id) {
+        if let Some(sheet_index) = Model::get_sheet_index_by_sheet_id(&self.workbook, sheet_id) {
             self.delete_sheet(sheet_index)
         } else {
             Err("Sheet not found".to_string())
         }
     }
 
-    pub(crate) fn get_sheet_index_by_sheet_id(&self, sheet_id: u32) -> Option<u32> {
-        let worksheets = &self.workbook.worksheets;
-        for (index, worksheet) in worksheets.iter().enumerate() {
+    pub(crate) fn get_sheet_index_by_sheet_id(workbook: &Workbook, sheet_id: u32) -> Option<u32> {
+        for (index, worksheet) in workbook.worksheets.iter().enumerate() {
             if worksheet.sheet_id == sheet_id {
                 return Some(index as u32);
             }
