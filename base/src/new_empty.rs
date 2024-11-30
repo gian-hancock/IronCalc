@@ -99,8 +99,7 @@ impl Model {
         }
         self.parser.set_lexer_mode(LexerMode::A1);
     }
-
-    pub(crate) fn parse_defined_names(&mut self) {
+    
     pub(crate) fn parse_defined_names(workbook: &mut Workbook, locale: &locale::Locale, parsed_defined_names: &mut HashMap<(Option<u32>, String), ParsedDefinedName>) {
         let mut new_parsed_defined_names = HashMap::new();
         for defined_name in &workbook.defined_names {

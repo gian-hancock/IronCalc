@@ -46,7 +46,7 @@ pub fn compare(model1: &Model, model2: &Model) -> CompareResult<Vec<Diff>> {
             message: "Different number of sheets".to_string(),
         });
     }
-    let eps = if let Ok(CellValue::Number(v)) = model1.get_cell_value_by_ref("METADATA!A1") {
+    let eps = if let Ok(CellValue::Number(v)) = Model::get_cell_value_by_ref(&model1.workbook, &model1.language, "METADATA!A1") {
         v
     } else {
         EPS

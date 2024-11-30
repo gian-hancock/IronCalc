@@ -405,19 +405,19 @@ fn test_get_cell_value_by_ref() {
 
     // Correct
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(1.0))
     );
 
     // You need to specify full reference
     assert_eq!(
-        model.get_cell_value_by_ref("A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "A1"),
         Err("Error parsing reference: 'A1'".to_string())
     );
 
     // Error, it has a trailing space
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1 "),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1 "),
         Err("Error parsing reference: 'Sheet1!A1 '".to_string())
     );
 }

@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_index(0, 1, 3),
+        Model::get_cell_value_by_index(&model.workbook, &model.language, 0, 1, 3),
         Ok(CellValue::String("Hello world!".to_string()))
     );
     Ok(())

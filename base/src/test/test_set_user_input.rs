@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use crate::{cell::CellValue, test::util::new_empty_model};
+use crate::{cell::CellValue, test::util::new_empty_model, Model};
 
 #[test]
 fn test_currencies() {
@@ -34,13 +34,13 @@ fn test_currencies() {
     assert_eq!(model._get_text("A1"), "$100.35");
     assert_eq!(model._get_text("B1"), *"TRUE");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(100.348))
     );
     // No space
     assert_eq!(model._get_text("A2"), "$100.35");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A2"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A2"),
         Ok(CellValue::Number(100.348))
     );
     assert_eq!(model._get_text("B2"), *"TRUE");
@@ -62,7 +62,7 @@ fn scientific() {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(0.0003))
     );
     assert_eq!(model._get_text("Sheet1!A1"), "3.00E-04");
@@ -85,7 +85,7 @@ fn test_percentage() {
 
     assert_eq!(model._get_text("B10"), *"TRUE");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A10"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A10"),
         Ok(CellValue::Number(0.5))
     );
     // Two decimal places
@@ -126,28 +126,28 @@ fn test_numbers() {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(1000000.0))
     );
 
     // Two decimal places
     assert_eq!(model._get_text("A20"), "50,123.55");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A20"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A20"),
         Ok(CellValue::Number(50123.549))
     );
 
     // This is a string
     assert_eq!(model._get_text("A21"), "50,12.549");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A21"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A21"),
         Ok(CellValue::String("50,12.549".to_string()))
     );
 
     // Commas in all places
     assert_eq!(model._get_text("A22"), "1,234,567");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A22"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A22"),
         Ok(CellValue::Number(1234567.0))
     );
 }
@@ -160,7 +160,7 @@ fn test_negative_numbers() {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(-100.0))
     );
 }
@@ -185,7 +185,7 @@ fn test_negative_currencies() {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(-100.0))
     );
     assert_eq!(model._get_text("A1"), *"-$100");
@@ -211,12 +211,12 @@ fn test_formulas() {
 
     assert_eq!(model._get_text("A3"), *"$300");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A3"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A3"),
         Ok(CellValue::Number(300.0))
     );
     assert_eq!(model._get_text("A4"), *"$600");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A4"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A4"),
         Ok(CellValue::Number(600.0))
     );
 }
@@ -403,7 +403,7 @@ fn test_number() {
 
     assert_eq!(model._get_text("A1"), *"3");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(3.0))
     );
 }
@@ -419,7 +419,7 @@ fn test_currencies_eur_prefix() {
 
     assert_eq!(model._get_text("A1"), "€100.35");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(100.348))
     );
 }
@@ -453,46 +453,46 @@ fn test_currencies_eur_suffix() {
 
     assert_eq!(model._get_text("A1"), "100.35€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(100.348))
     );
     assert_eq!(model._get_text("A2"), "25€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A2"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A2"),
         Ok(CellValue::Number(25.0))
     );
 
     assert_eq!(model._get_text("B1"), "-123.35€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!B1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!B1"),
         Ok(CellValue::Number(-123.348))
     );
     assert_eq!(model._get_text("B2"), "-42€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!B2"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!B2"),
         Ok(CellValue::Number(-42.0))
     );
 
     // with a space
     assert_eq!(model._get_text("C1"), "101.35€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!C1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!C1"),
         Ok(CellValue::Number(101.348))
     );
     assert_eq!(model._get_text("C2"), "26€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!C2"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!C2"),
         Ok(CellValue::Number(26.0))
     );
 
     assert_eq!(model._get_text("D1"), "-12.35€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!D1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!D1"),
         Ok(CellValue::Number(-12.348))
     );
     assert_eq!(model._get_text("D2"), "-45€");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!D2"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!D2"),
         Ok(CellValue::Number(-45.0))
     );
 }
@@ -531,7 +531,7 @@ fn input_dates() {
 
     assert_eq!(model._get_text("A1"), "3/4/2025");
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!A1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!A1"),
         Ok(CellValue::Number(45750.0))
     );
 

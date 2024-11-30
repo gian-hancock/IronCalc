@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use crate::{cell::CellValue, test::util::new_empty_model};
+use crate::{cell::CellValue, test::util::new_empty_model, Model};
 
 #[test]
 fn fn_arguments() {
@@ -112,7 +112,7 @@ fn fn_mirr() {
 
     model.evaluate();
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!B1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!B1"),
         Ok(CellValue::Number(0.1260941303659051))
     );
     assert_eq!(model._get_text("B1"), "13%");
@@ -136,7 +136,7 @@ fn fn_mirr_div_0() {
 
     model.evaluate();
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!B1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!B1"),
         Ok(CellValue::Number(-1.0))
     );
     assert_eq!(model._get_text("B1"), "-100%");
@@ -193,7 +193,7 @@ fn fn_sln() {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!B1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!B1"),
         Ok(CellValue::Number(-1.0 / 3.0))
     );
     assert_eq!(model._get_text("B1"), "-$0.33");
@@ -216,7 +216,7 @@ fn fn_syd() {
     model.evaluate();
 
     assert_eq!(
-        model.get_cell_value_by_ref("Sheet1!B1"),
+        Model::get_cell_value_by_ref(&model.workbook, &model.language, "Sheet1!B1"),
         Ok(CellValue::Number(4.976190476190476))
     );
     assert_eq!(model._get_text("B1"), "$4.98");

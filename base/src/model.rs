@@ -111,7 +111,7 @@ pub struct Model {
     /// The locale of the model
     pub(crate) locale: Locale,
     /// Tha language used
-    pub(crate) language: Language,
+    pub language: Language,
     /// The timezone used to evaluate the model
     pub(crate) tz: Tz,
     /// The view id. A view consist of a selected sheet and ranges.
@@ -1600,8 +1600,8 @@ impl Model {
     ///
     /// See also:
     /// * [Model::get_cell_value_by_index()]
-    pub fn get_cell_value_by_ref(&self, cell_ref: &str) -> Result<CellValue, String> {
-        let cell_reference = match Model::parse_reference(&self.workbook, cell_ref) {
+    pub fn get_cell_value_by_ref(workbook: &Workbook, language: &Language, cell_ref: &str) -> Result<CellValue, String> {
+        let cell_reference = match Model::parse_reference(workbook, cell_ref) {
             Some(c) => c,
             None => return Err(format!("Error parsing reference: '{cell_ref}'")),
         };
@@ -1609,7 +1609,7 @@ impl Model {
         let column = cell_reference.column;
         let row = cell_reference.row;
 
-        self.get_cell_value_by_index(sheet_index, row, column)
+        Model::get_cell_value_by_index(workbook, language, sheet_index, row, column)
     }
 
     /// Returns the cell value for (`sheet`, `row`, `column`)
@@ -1617,18 +1617,18 @@ impl Model {
     /// See also:
     /// * [Model::get_formatted_cell_value()]
     pub fn get_cell_value_by_index(
-        &self,
+        workbook: &Workbook,
+        language: &Language,
         sheet_index: u32,
         row: i32,
         column: i32,
     ) -> Result<CellValue, String> {
-        let cell = self
-            .workbook
+        let cell = workbook
             .worksheet(sheet_index)?
             .cell(row, column)
             .cloned()
             .unwrap_or_default();
-        let cell_value = cell.value(&self.workbook.shared_strings, &self.language);
+        let cell_value = cell.value(&workbook.shared_strings, language);
         Ok(cell_value)
     }
 
