@@ -713,7 +713,7 @@ impl Model {
             CellFormulaNumber { v, .. } => CalcResult::Number(*v),
             CellFormulaString { v, .. } => CalcResult::String(v.clone()),
             CellFormulaError { ei, o, m, .. } => {
-                if let Some(cell_reference) = self.parse_reference(o) {
+                if let Some(cell_reference) = Model::parse_reference(&self.workbook, o) {
                     CalcResult::new_error(ei.clone(), cell_reference, m.clone())
                 } else {
                     CalcResult::Error {
@@ -914,7 +914,7 @@ impl Model {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn parse_reference(&self, s: &str) -> Option<CellReferenceIndex> {
+    pub fn parse_reference(workbook: &Workbook, s: &str) -> Option<CellReferenceIndex> {
         let bytes = s.as_bytes();
         let mut sheet_name = "".to_string();
         let mut column = "".to_string();
@@ -942,7 +942,7 @@ impl Model {
                 }
             }
         }
-        let sheet = match Model::get_sheet_index_by_name(&self.workbook, &sheet_name) {
+        let sheet = match Model::get_sheet_index_by_name(workbook, &sheet_name) {
             Some(s) => s,
             None => return None,
         };
@@ -1596,7 +1596,7 @@ impl Model {
     /// See also:
     /// * [Model::get_cell_value_by_index()]
     pub fn get_cell_value_by_ref(&self, cell_ref: &str) -> Result<CellValue, String> {
-        let cell_reference = match self.parse_reference(cell_ref) {
+        let cell_reference = match Model::parse_reference(&self.workbook, cell_ref) {
             Some(c) => c,
             None => return Err(format!("Error parsing reference: '{cell_ref}'")),
         };

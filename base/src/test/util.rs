@@ -11,9 +11,9 @@ pub fn new_empty_model() -> Model {
 impl Model {
     fn _parse_reference(&self, cell: &str) -> CellReferenceIndex {
         if cell.contains('!') {
-            self.parse_reference(cell).unwrap()
+            Model::parse_reference(&self.workbook, cell).unwrap()
         } else {
-            self.parse_reference(&format!("Sheet1!{}", cell)).unwrap()
+            Model::parse_reference(&self.workbook, &format!("Sheet1!{}", cell)).unwrap()
         }
     }
     pub fn _set(&mut self, cell: &str, value: &str) {
