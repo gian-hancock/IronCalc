@@ -530,10 +530,10 @@ impl Model {
     }
 
     fn cell_reference_to_string(
-        &self,
+        workbook: &Workbook,
         cell_reference: &CellReferenceIndex,
     ) -> Result<String, String> {
-        let sheet = self.workbook.worksheet(cell_reference.sheet)?;
+        let sheet = workbook.worksheet(cell_reference.sheet)?;
         let column = utils::number_to_column(cell_reference.column)
             .ok_or_else(|| "Invalid column".to_string())?;
         if !is_valid_row(cell_reference.row) {
@@ -595,7 +595,7 @@ impl Model {
                     origin,
                     message,
                 } => {
-                    let o = match self.cell_reference_to_string(origin) {
+                    let o = match Model::cell_reference_to_string(&self.workbook, origin) {
                         Ok(s) => s,
                         Err(_) => "".to_string(),
                     };
@@ -622,7 +622,7 @@ impl Model {
                         let v = self.evaluate_cell(intersection_cell);
                         self.set_cell_value(cell_reference, &v);
                     } else {
-                        let o = match self.cell_reference_to_string(&cell_reference) {
+                        let o = match Model::cell_reference_to_string(&self.workbook, &cell_reference) {
                             Ok(s) => s,
                             Err(_) => "".to_string(),
                         };
@@ -1991,7 +1991,7 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::CellReferenceIndex as CellReference;
-    use crate::{test::util::new_empty_model, types::Cell};
+    use crate::{test::util::new_empty_model, types::Cell, Model};
 
     #[test]
     fn test_cell_reference_to_string() {
@@ -2002,7 +2002,7 @@ mod tests {
             column: 16,
         };
         assert_eq!(
-            model.cell_reference_to_string(&reference),
+            Model::cell_reference_to_string(&model.workbook, &reference),
             Ok("Sheet1!P32".to_string())
         )
     }
@@ -2016,7 +2016,7 @@ mod tests {
             column: 1,
         };
         assert_eq!(
-            model.cell_reference_to_string(&reference),
+            Model::cell_reference_to_string(&model.workbook, &reference),
             Err("Invalid sheet index".to_string())
         )
     }
@@ -2030,7 +2030,7 @@ mod tests {
             column: 20_000,
         };
         assert_eq!(
-            model.cell_reference_to_string(&reference),
+            Model::cell_reference_to_string(&model.workbook, &reference),
             Err("Invalid column".to_string())
         )
     }
@@ -2044,7 +2044,7 @@ mod tests {
             column: 1,
         };
         assert_eq!(
-            model.cell_reference_to_string(&reference),
+            Model::cell_reference_to_string(&model.workbook, &reference),
             Err("Invalid row".to_string())
         )
     }
