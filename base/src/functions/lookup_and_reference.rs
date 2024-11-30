@@ -699,7 +699,7 @@ impl Model {
                     Some(cell.sheet),
                     &s,
                     &self.locale,
-                    |name| self.get_sheet_index_by_name(name),
+                    |name| Model::get_sheet_index_by_name(&self.workbook, name),
                 );
 
                 let parsed_reference = match parsed_reference {

@@ -108,7 +108,7 @@ impl Model {
                     None,
                     &defined_name.formula,
                     &self.locale,
-                    |name| self.get_sheet_index_by_name(name),
+                    |name| Model::get_sheet_index_by_name(&self.workbook, name),
                 ) {
                 match reference {
                     ParsedReference::CellReference(cell_reference) => {
@@ -229,7 +229,7 @@ impl Model {
     ///   * The target sheet already exists
     ///   * The target sheet name is invalid
     pub fn rename_sheet(&mut self, old_name: &str, new_name: &str) -> Result<(), String> {
-        if let Some(sheet_index) = self.get_sheet_index_by_name(old_name) {
+        if let Some(sheet_index) = Model::get_sheet_index_by_name(&self.workbook, old_name) {
             return self.rename_sheet_by_index(sheet_index, new_name);
         }
         Err(format!("Could not find sheet {}", old_name))
@@ -248,7 +248,7 @@ impl Model {
         if !is_valid_sheet_name(new_name) {
             return Err(format!("Invalid name for a sheet: '{}'.", new_name));
         }
-        if self.get_sheet_index_by_name(new_name).is_some() {
+        if Model::get_sheet_index_by_name(&self.workbook, new_name).is_some() {
             return Err(format!("Sheet already exists: '{}'.", new_name));
         }
         let worksheets = &self.workbook.worksheets;
@@ -305,7 +305,7 @@ impl Model {
     ///   * The sheet does not exists
     ///   * It is the last sheet
     pub fn delete_sheet_by_name(&mut self, name: &str) -> Result<(), String> {
-        if let Some(sheet_index) = self.get_sheet_index_by_name(name) {
+        if let Some(sheet_index) = Model::get_sheet_index_by_name(&self.workbook, name) {
             self.delete_sheet(sheet_index)
         } else {
             Err("Sheet not found".to_string())

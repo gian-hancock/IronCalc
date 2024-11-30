@@ -271,7 +271,7 @@ impl Model {
             // Now let's see if it is a table
             for (table_name, table) in &self.workbook.tables {
                 if table_name == name {
-                    if let Some(sheet_index) = self.get_sheet_index_by_name(&table.sheet_name) {
+                    if let Some(sheet_index) = Model::get_sheet_index_by_name(&self.workbook, &table.sheet_name) {
                         return CalcResult::Number(sheet_index as f64 + 1.0);
                     } else {
                         break;
@@ -284,7 +284,7 @@ impl Model {
             Ok(s) => s,
             Err(e) => return e,
         };
-        if let Some(sheet_index) = self.get_sheet_index_by_name(&sheet_name) {
+        if let Some(sheet_index) = Model::get_sheet_index_by_name(&self.workbook, &sheet_name) {
             return CalcResult::Number(sheet_index as f64 + 1.0);
         }
         CalcResult::Error {

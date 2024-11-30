@@ -793,9 +793,8 @@ impl Model {
         }
     }
 
-    pub(crate) fn get_sheet_index_by_name(&self, name: &str) -> Option<u32> {
-        let worksheets = &self.workbook.worksheets;
-        for (index, worksheet) in worksheets.iter().enumerate() {
+    pub(crate) fn get_sheet_index_by_name(workbook: &Workbook, name: &str) -> Option<u32> {
+        for (index, worksheet) in workbook.worksheets.iter().enumerate() {
             if worksheet.get_name().to_uppercase() == name.to_uppercase() {
                 return Some(index as u32);
             }
@@ -943,7 +942,7 @@ impl Model {
                 }
             }
         }
-        let sheet = match self.get_sheet_index_by_name(&sheet_name) {
+        let sheet = match Model::get_sheet_index_by_name(&self.workbook, &sheet_name) {
             Some(s) => s,
             None => return None,
         };
