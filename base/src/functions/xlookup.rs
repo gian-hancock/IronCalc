@@ -1,9 +1,14 @@
+use std::collections::HashMap;
+
 use crate::constants::{LAST_COLUMN, LAST_ROW};
 use crate::expressions::types::CellReferenceIndex;
+use crate::language::Language;
+use crate::types::Workbook;
 use crate::{
     calc_result::CalcResult, expressions::parser::Node, expressions::token::Error, model::Model,
 };
 
+use super::CellState;
 use super::{
     binary_search::{
         binary_search_descending_or_greater, binary_search_descending_or_smaller,
@@ -144,17 +149,22 @@ impl Model {
     ///          in ascending order. If not sorted, invalid results will be returned.
     ///   * -2 - Perform a binary search that relies on lookup_array being sorted
     ///          in descending order. If not sorted, invalid results will be returned.
-    pub(crate) fn fn_xlookup(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_xlookup(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() < 3 || args.len() > 6 {
             return CalcResult::new_args_number_error(cell);
         }
-        let lookup_value = self.evaluate_node_in_context(&args[0], cell);
+        let lookup_value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if lookup_value.is_error() {
             return lookup_value;
         }
         // Get optional arguments
         let if_not_found = if args.len() >= 4 {
-            let v = self.evaluate_node_in_context(&args[3], cell);
+            let v = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[3], cell);
             match v {
                 CalcResult::EmptyArg => CalcResult::Error {
                     error: Error::NA,
@@ -172,7 +182,7 @@ impl Model {
             }
         };
         let match_mode = if args.len() >= 5 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(c) => match c.floor() as i32 {
                     -1 => MatchMode::ExactMatchSmaller,
                     1 => MatchMode::ExactMatchLarger,
@@ -193,7 +203,7 @@ impl Model {
             MatchMode::ExactMatch
         };
         let search_mode = if args.len() == 6 {
-            match self.get_number(&args[5], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[5], cell) {
                 Ok(c) => match c.floor() as i32 {
                     1 => SearchMode::StartAtFirstItem,
                     -1 => SearchMode::StartAtLastItem,
@@ -214,7 +224,7 @@ impl Model {
             SearchMode::StartAtFirstItem
         };
         // lookup_array
-        match self.evaluate_node_in_context(&args[1], cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell) {
             CalcResult::Range { left, right } => {
                 let is_row_vector;
                 if left.row == right.row {
@@ -230,7 +240,7 @@ impl Model {
                     };
                 }
                 // return array
-                match self.evaluate_node_in_context(&args[2], cell) {
+                match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2], cell) {
                     CalcResult::Range {
                         left: result_left,
                         right: result_right,
@@ -251,16 +261,14 @@ impl Model {
                         let column1 = left.column;
 
                         if row1 == 1 && row2 == LAST_ROW {
-                            row2 = self
-                                .workbook
+                            row2 = workbook
                                 .worksheet(left.sheet)
                                 .expect("Sheet expected during evaluation.")
                                 .dimension()
                                 .max_row;
                         }
                         if column1 == 1 && column2 == LAST_COLUMN {
-                            column2 = self
-                                .workbook
+                            column2 = workbook
                                 .worksheet(left.sheet)
                                 .expect("Sheet expected during evaluation.")
                                 .dimension()
@@ -278,14 +286,14 @@ impl Model {
                         };
                         match search_mode {
                             SearchMode::StartAtFirstItem | SearchMode::StartAtLastItem => {
-                                let array = &self.prepare_array(&left, &right, is_row_vector);
+                                let array = &Model::prepare_array(workbook, cells, parsed_formulas, language, &left, &right, is_row_vector);
                                 match linear_search(&lookup_value, array, search_mode, match_mode) {
                                     Some(index) => {
                                         let row_index =
                                             if is_row_vector { index as i32 } else { 0 };
                                         let column_index =
                                             if is_row_vector { 0 } else { index as i32 };
-                                        self.evaluate_cell(CellReferenceIndex {
+                                        Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                             sheet: result_left.sheet,
                                             row: result_left.row + row_index,
                                             column: result_left.column + column_index,
@@ -299,24 +307,24 @@ impl Model {
                                 let index = if match_mode == MatchMode::ExactMatchLarger {
                                     if search_mode == SearchMode::BinarySearchAscending {
                                         binary_search_or_greater(
-                                            &lookup_value,
-                                            &self.prepare_array(&left, &right, is_row_vector),
+                                            &&lookup_value,
+                                            Model::prepare_array(workbook, cells, parsed_formulas, language, &left, &right, is_row_vector),
                                         )
                                     } else {
                                         binary_search_descending_or_greater(
                                             &lookup_value,
-                                            &self.prepare_array(&left, &right, is_row_vector),
+                                            &Model::prepare_array(workbook, cells, parsed_formulas, language, &left, &right, is_row_vector),
                                         )
                                     }
                                 } else if search_mode == SearchMode::BinarySearchAscending {
                                     binary_search_or_smaller(
                                         &lookup_value,
-                                        &self.prepare_array(&left, &right, is_row_vector),
+                                        &Model::prepare_array(workbook, cells, parsed_formulas, language, &left, &right, is_row_vector),
                                     )
                                 } else {
                                     binary_search_descending_or_smaller(
                                         &lookup_value,
-                                        &self.prepare_array(&left, &right, is_row_vector),
+                                        &Model::prepare_array(workbook, cells, parsed_formulas, language, &left, &right, is_row_vector),
                                     )
                                 };
                                 match index {
@@ -327,14 +335,14 @@ impl Model {
                                         let column =
                                             result_left.column + if is_row_vector { 0 } else { l };
                                         if match_mode == MatchMode::ExactMatch {
-                                            let value = self.evaluate_cell(CellReferenceIndex {
+                                            let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                                 sheet: left.sheet,
                                                 row: left.row + if is_row_vector { l } else { 0 },
                                                 column: left.column
                                                     + if is_row_vector { 0 } else { l },
                                             });
                                             if compare_values(&value, &lookup_value) == 0 {
-                                                self.evaluate_cell(CellReferenceIndex {
+                                                Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                                     sheet: result_left.sheet,
                                                     row,
                                                     column,
@@ -345,7 +353,7 @@ impl Model {
                                         } else if match_mode == MatchMode::ExactMatchSmaller
                                             || match_mode == MatchMode::ExactMatchLarger
                                         {
-                                            self.evaluate_cell(CellReferenceIndex {
+                                            Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                                 sheet: result_left.sheet,
                                                 row,
                                                 column,

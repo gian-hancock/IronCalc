@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
 use crate::constants::{LAST_COLUMN, LAST_ROW};
 use crate::expressions::types::CellReferenceIndex;
+use crate::language::Language;
+use crate::types::Workbook;
 use crate::{
     calc_result::{CalcResult, Range},
     expressions::parser::Node,
@@ -8,16 +12,22 @@ use crate::{
 };
 
 use super::util::build_criteria;
+use super::CellState;
 
 impl Model {
-    pub(crate) fn fn_average(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_average(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
         let mut count = 0.0;
         let mut sum = 0.0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Number(value) => {
                     count += 1.0;
                     sum += value;
@@ -39,7 +49,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -91,14 +101,19 @@ impl Model {
         CalcResult::Number(sum / count)
     }
 
-    pub(crate) fn fn_averagea(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_averagea(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
         let mut count = 0.0;
         let mut sum = 0.0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Range { left, right } => {
                     if left.sheet != right.sheet {
                         return CalcResult::new_error(
@@ -109,7 +124,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -177,13 +192,18 @@ impl Model {
         CalcResult::Number(sum / count)
     }
 
-    pub(crate) fn fn_count(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_count(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
         let mut result = 0.0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Number(_) => {
                     result += 1.0;
                 }
@@ -207,7 +227,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            if let CalcResult::Number(_) = self.evaluate_cell(CellReferenceIndex {
+                            if let CalcResult::Number(_) = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -225,13 +245,18 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn fn_counta(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_counta(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
         let mut result = 0.0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::EmptyCell | CalcResult::EmptyArg => {}
                 CalcResult::Range { left, right } => {
                     if left.sheet != right.sheet {
@@ -243,7 +268,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -264,14 +289,19 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn fn_countblank(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_countblank(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         // COUNTBLANK requires only one argument
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
         let mut result = 0.0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::EmptyCell | CalcResult::EmptyArg => result += 1.0,
                 CalcResult::String(s) => {
                     if s.is_empty() {
@@ -288,7 +318,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -310,10 +340,15 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn fn_countif(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_countif(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 {
             let arguments = vec![args[0].clone(), args[1].clone()];
-            self.fn_countifs(&arguments, cell)
+            Model::fn_countifs(workbook, cells, parsed_formulas, language, &arguments, cell)
         } else {
             CalcResult::new_args_number_error(cell)
         }
@@ -321,20 +356,30 @@ impl Model {
 
     /// AVERAGEIF(criteria_range, criteria, [average_range])
     /// if average_rage is missing then criteria_range will be used
-    pub(crate) fn fn_averageif(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_averageif(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 {
             let arguments = vec![args[0].clone(), args[0].clone(), args[1].clone()];
-            self.fn_averageifs(&arguments, cell)
+            Model::fn_averageifs(workbook, cells, parsed_formulas, language, &arguments, cell)
         } else if args.len() == 3 {
             let arguments = vec![args[2].clone(), args[0].clone(), args[1].clone()];
-            self.fn_averageifs(&arguments, cell)
+            Model::fn_averageifs(workbook, cells, parsed_formulas, language, &arguments, cell)
         } else {
             CalcResult::new_args_number_error(cell)
         }
     }
 
     // FIXME: This function shares a lot of code with apply_ifs. Can we merge them?
-    pub(crate) fn fn_countifs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_countifs(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count < 2 || args_count % 2 == 1 {
             return CalcResult::new_args_number_error(cell);
@@ -347,12 +392,12 @@ impl Model {
         let mut fn_criteria = Vec::new();
         let ranges = &mut Vec::new();
         for case_index in 0..case_count {
-            let criterion = self.evaluate_node_in_context(&args[case_index * 2 + 1], cell);
+            let criterion = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[case_index * 2 + 1], cell);
             criteria.push(criterion);
             // NB: We cannot do:
             // fn_criteria.push(build_criteria(&criterion));
             // because criterion doesn't live long enough
-            let result = self.evaluate_node_in_context(&args[case_index * 2], cell);
+            let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[case_index * 2], cell);
             if result.is_error() {
                 return result;
             }
@@ -381,8 +426,7 @@ impl Model {
         let right_row = first_range.right.row;
         let right_column = first_range.right.column;
 
-        let dimension = self
-            .workbook
+        let dimension = workbook
             .worksheet(first_range.left.sheet)
             .expect("Sheet expected during evaluation.")
             .dimension();
@@ -429,7 +473,7 @@ impl Model {
                     // We check if value in range n meets criterion n
                     let range = &ranges[case_index];
                     let fn_criterion = &fn_criteria[case_index];
-                    let value = self.evaluate_cell(CellReferenceIndex {
+                    let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                         sheet: range.left.sheet,
                         row: range.left.row + row - first_range.left.row,
                         column: range.left.column + column - first_range.left.column,
@@ -448,7 +492,10 @@ impl Model {
     }
 
     pub(crate) fn apply_ifs<F>(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mut apply: F,
@@ -460,7 +507,7 @@ impl Model {
         if args_count < 3 || args_count % 2 == 0 {
             return Err(CalcResult::new_args_number_error(cell));
         }
-        let arg_0 = self.evaluate_node_in_context(&args[0], cell);
+        let arg_0 = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if arg_0.is_error() {
             return Err(arg_0);
         }
@@ -488,13 +535,13 @@ impl Model {
         let mut fn_criteria = Vec::new();
         let ranges = &mut Vec::new();
         for case_index in 1..=case_count {
-            let criterion = self.evaluate_node_in_context(&args[case_index * 2], cell);
+            let criterion = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[case_index * 2], cell);
             // NB: criterion might be an error. That's ok
             criteria.push(criterion);
             // NB: We cannot do:
             // fn_criteria.push(build_criteria(&criterion));
             // because criterion doesn't live long enough
-            let result = self.evaluate_node_in_context(&args[case_index * 2 - 1], cell);
+            let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[case_index * 2 - 1], cell);
             if result.is_error() {
                 return Err(result);
             }
@@ -526,16 +573,14 @@ impl Model {
         let mut right_column = sum_range.right.column;
 
         if left_row == 1 && right_row == LAST_ROW {
-            right_row = self
-                .workbook
+            right_row = workbook
                 .worksheet(sum_range.left.sheet)
                 .expect("Sheet expected during evaluation.")
                 .dimension()
                 .max_row;
         }
         if left_column == 1 && right_column == LAST_COLUMN {
-            right_column = self
-                .workbook
+            right_column = workbook
                 .worksheet(sum_range.left.sheet)
                 .expect("Sheet expected during evaluation.")
                 .dimension()
@@ -549,7 +594,7 @@ impl Model {
                     // We check if value in range n meets criterion n
                     let range = &ranges[case_index];
                     let fn_criterion = &fn_criteria[case_index];
-                    let value = self.evaluate_cell(CellReferenceIndex {
+                    let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                         sheet: range.left.sheet,
                         row: range.left.row + row - sum_range.left.row,
                         column: range.left.column + column - sum_range.left.column,
@@ -560,7 +605,7 @@ impl Model {
                     }
                 }
                 if is_true {
-                    let v = self.evaluate_cell(CellReferenceIndex {
+                    let v = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                         sheet: sum_range.left.sheet,
                         row,
                         column,
@@ -576,7 +621,12 @@ impl Model {
         Ok(())
     }
 
-    pub(crate) fn fn_averageifs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_averageifs(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut total = 0.0;
         let mut count = 0.0;
 
@@ -584,7 +634,7 @@ impl Model {
             total += value;
             count += 1.0;
         };
-        if let Err(e) = self.apply_ifs(args, cell, average) {
+        if let Err(e) = Model::apply_ifs(workbook, cells, parsed_formulas, language, args, cell, average) {
             return e;
         }
 
@@ -598,10 +648,15 @@ impl Model {
         CalcResult::Number(total / count)
     }
 
-    pub(crate) fn fn_minifs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_minifs(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut min = f64::INFINITY;
         let apply_min = |value: f64| min = value.min(min);
-        if let Err(e) = self.apply_ifs(args, cell, apply_min) {
+        if let Err(e) = Model::apply_ifs(workbook, cells, parsed_formulas, language, args, cell, apply_min) {
             return e;
         }
 
@@ -611,10 +666,15 @@ impl Model {
         CalcResult::Number(min)
     }
 
-    pub(crate) fn fn_maxifs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_maxifs(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut max = -f64::INFINITY;
         let apply_max = |value: f64| max = value.max(max);
-        if let Err(e) = self.apply_ifs(args, cell, apply_max) {
+        if let Err(e) = Model::apply_ifs(workbook, cells, parsed_formulas, language, args, cell, apply_max) {
             return e;
         }
         if max.is_infinite() {

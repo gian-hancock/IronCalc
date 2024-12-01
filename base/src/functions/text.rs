@@ -1,15 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    constants::{LAST_COLUMN, LAST_ROW},
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    formatter::format::{format_number, parse_formatted_number},
-    model::Model,
-    number_format::to_precision,
+    calc_result::CalcResult, constants::{LAST_COLUMN, LAST_ROW}, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, formatter::format::{format_number, parse_formatted_number}, language::Language, model::Model, number_format::to_precision, types::Workbook
 };
 
 use super::{
     text_util::{substitute, text_after, text_before, Case},
-    util::from_wildcard_to_regex,
+    util::from_wildcard_to_regex, CellState,
 };
 
 /// Finds the first instance of 'search_for' in text starting at char index start
@@ -51,10 +48,15 @@ fn search(search_for: &str, text: &str, start: usize) -> Option<i32> {
 }
 
 impl Model {
-    pub(crate) fn fn_concat(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_concat(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut result = "".to_string();
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::String(value) => result = format!("{}{}", result, value),
                 CalcResult::Number(value) => result = format!("{}{}", result, value),
                 CalcResult::EmptyCell | CalcResult::EmptyArg => {}
@@ -76,7 +78,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -105,9 +107,14 @@ impl Model {
         }
         CalcResult::String(result)
     }
-    pub(crate) fn fn_text(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_text(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 {
-            let value = match self.evaluate_node_in_context(&args[0], cell) {
+            let value = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Number(f) => f,
                 CalcResult::String(s) => {
                     return CalcResult::String(s);
@@ -126,7 +133,7 @@ impl Model {
                 }
                 CalcResult::EmptyCell | CalcResult::EmptyArg => 0.0,
             };
-            let format_code = match self.get_string(&args[1], cell) {
+            let format_code = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(s) => s,
                 Err(s) => return s,
             };
@@ -152,20 +159,25 @@ impl Model {
     ///  * If start_num is not greater than zero, FIND and FINDB return the #VALUE! error value.
     ///  * If start_num is greater than the length of within_text, FIND and FINDB return the #VALUE! error value.
     /// NB: FINDB is not implemented. It is the same as FIND function unless locale is a DBCS (Double Byte Character Set)
-    pub(crate) fn fn_find(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_find(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() < 2 || args.len() > 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let find_text = match self.get_string(&args[0], cell) {
+        let find_text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
-        let within_text = match self.get_string(&args[1], cell) {
+        let within_text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let start_num = if args.len() == 3 {
-            match self.get_number(&args[2], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(s) => s.floor(),
                 Err(s) => return s,
             }
@@ -204,20 +216,25 @@ impl Model {
     ///  * Allows wildcards
     ///  * It is case insensitive
     /// SEARCH(find_text, within_text, [start_num])
-    pub(crate) fn fn_search(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_search(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() < 2 || args.len() > 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let find_text = match self.get_string(&args[0], cell) {
+        let find_text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
-        let within_text = match self.get_string(&args[1], cell) {
+        let within_text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let start_num = if args.len() == 3 {
-            match self.get_number(&args[2], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(s) => s.floor(),
                 Err(s) => return s,
             }
@@ -258,9 +275,14 @@ impl Model {
     }
 
     // LEN, LEFT, RIGHT, MID, LOWER, UPPER, TRIM
-    pub(crate) fn fn_len(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_len(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            let s = match self.evaluate_node_in_context(&args[0], cell) {
+            let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Number(v) => format!("{}", v),
                 CalcResult::String(v) => v,
                 CalcResult::Boolean(b) => {
@@ -286,9 +308,14 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_trim(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_trim(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            let s = match self.evaluate_node_in_context(&args[0], cell) {
+            let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Number(v) => format!("{}", v),
                 CalcResult::String(v) => v,
                 CalcResult::Boolean(b) => {
@@ -314,9 +341,14 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_lower(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_lower(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            let s = match self.evaluate_node_in_context(&args[0], cell) {
+            let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Number(v) => format!("{}", v),
                 CalcResult::String(v) => v,
                 CalcResult::Boolean(b) => {
@@ -342,9 +374,14 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_upper(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_upper(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            let s = match self.evaluate_node_in_context(&args[0], cell) {
+            let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Number(v) => format!("{}", v),
                 CalcResult::String(v) => v,
                 CalcResult::Boolean(b) => {
@@ -370,11 +407,16 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_left(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_left(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 2 || args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
-        let s = match self.evaluate_node_in_context(&args[0], cell) {
+        let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::Number(v) => format!("{}", v),
             CalcResult::String(v) => v,
             CalcResult::Boolean(b) => {
@@ -396,7 +438,7 @@ impl Model {
             CalcResult::EmptyCell | CalcResult::EmptyArg => "".to_string(),
         };
         let num_chars = if args.len() == 2 {
-            match self.evaluate_node_in_context(&args[1], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 CalcResult::Number(v) => {
                     if v < 0.0 {
                         return CalcResult::Error {
@@ -438,11 +480,16 @@ impl Model {
         CalcResult::String(result)
     }
 
-    pub(crate) fn fn_right(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_right(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 2 || args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
-        let s = match self.evaluate_node_in_context(&args[0], cell) {
+        let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::Number(v) => format!("{}", v),
             CalcResult::String(v) => v,
             CalcResult::Boolean(b) => {
@@ -464,7 +511,7 @@ impl Model {
             CalcResult::EmptyCell | CalcResult::EmptyArg => "".to_string(),
         };
         let num_chars = if args.len() == 2 {
-            match self.evaluate_node_in_context(&args[1], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 CalcResult::Number(v) => {
                     if v < 0.0 {
                         return CalcResult::Error {
@@ -506,11 +553,16 @@ impl Model {
         return CalcResult::String(result.chars().rev().collect::<String>());
     }
 
-    pub(crate) fn fn_mid(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_mid(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let s = match self.evaluate_node_in_context(&args[0], cell) {
+        let s = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::Number(v) => format!("{}", v),
             CalcResult::String(v) => v,
             CalcResult::Boolean(b) => {
@@ -531,7 +583,7 @@ impl Model {
             }
             CalcResult::EmptyCell | CalcResult::EmptyArg => "".to_string(),
         };
-        let start_num = match self.evaluate_node_in_context(&args[1], cell) {
+        let start_num = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell) {
             CalcResult::Number(v) => {
                 if v < 1.0 {
                     return CalcResult::Error {
@@ -559,7 +611,7 @@ impl Model {
                 };
             }
         };
-        let num_chars = match self.evaluate_node_in_context(&args[2], cell) {
+        let num_chars = match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2], cell) {
             CalcResult::Number(v) => {
                 if v < 0.0 {
                     return CalcResult::Error {
@@ -610,15 +662,20 @@ impl Model {
     }
 
     // REPT(text, number_times)
-    pub(crate) fn fn_rept(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_rept(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let text = match self.get_string(&args[0], cell) {
+        let text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let number_times = match self.get_number(&args[1], cell) {
+        let number_times = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f.floor() as i32,
             Err(s) => return s,
         };
@@ -647,21 +704,26 @@ impl Model {
     }
 
     // TEXTAFTER(text, delimiter, [instance_num], [match_mode], [match_end], [if_not_found])
-    pub(crate) fn fn_textafter(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_textafter(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(2..=6).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let text = match self.get_string(&args[0], cell) {
+        let text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let delimiter = match self.get_string(&args[1], cell) {
+        let delimiter = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         let instance_num = if arg_count > 2 {
-            match self.get_number(&args[2], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(f) => f.floor() as i32,
                 Err(s) => return s,
             }
@@ -669,7 +731,7 @@ impl Model {
             1
         };
         let match_mode = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => {
                     if f == 0.0 {
                         Case::Sensitive
@@ -684,7 +746,7 @@ impl Model {
         };
 
         let match_end = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -737,7 +799,7 @@ impl Model {
                 }
                 if arg_count == 6 {
                     // An empty cell is converted to empty string (not 0)
-                    match self.evaluate_node_in_context(&args[5], cell) {
+                    match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[5], cell) {
                         CalcResult::EmptyCell => CalcResult::String("".to_string()),
                         result => result,
                     }
@@ -752,21 +814,26 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_textbefore(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_textbefore(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(2..=6).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let text = match self.get_string(&args[0], cell) {
+        let text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let delimiter = match self.get_string(&args[1], cell) {
+        let delimiter = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         let instance_num = if arg_count > 2 {
-            match self.get_number(&args[2], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(f) => f.floor() as i32,
                 Err(s) => return s,
             }
@@ -774,7 +841,7 @@ impl Model {
             1
         };
         let match_mode = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => {
                     if f == 0.0 {
                         Case::Sensitive
@@ -789,7 +856,7 @@ impl Model {
         };
 
         let match_end = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -842,7 +909,7 @@ impl Model {
                 }
                 if arg_count == 6 {
                     // An empty cell is converted to empty string (not 0)
-                    match self.evaluate_node_in_context(&args[5], cell) {
+                    match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[5], cell) {
                         CalcResult::EmptyCell => CalcResult::String("".to_string()),
                         result => result,
                     }
@@ -858,22 +925,27 @@ impl Model {
     }
 
     // TEXTJOIN(delimiter, ignore_empty, text1, [text2], …)
-    pub(crate) fn fn_textjoin(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_textjoin(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if arg_count < 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let delimiter = match self.get_string(&args[0], cell) {
+        let delimiter = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let ignore_empty = match self.get_boolean(&args[1], cell) {
+        let ignore_empty = match Model::get_boolean(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(b) => b,
             Err(error) => return error,
         };
         let mut values = Vec::new();
         for arg in &args[2..] {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Number(value) => values.push(format!("{value}")),
                 CalcResult::Range { left, right } => {
                     if left.sheet != right.sheet {
@@ -888,16 +960,14 @@ impl Model {
                     let column1 = left.column;
                     let mut column2 = right.column;
                     if row1 == 1 && row2 == LAST_ROW {
-                        row2 = self
-                            .workbook
+                        row2 = workbook
                             .worksheet(left.sheet)
                             .expect("Sheet expected during evaluation.")
                             .dimension()
                             .max_row;
                     }
                     if column1 == 1 && column2 == LAST_COLUMN {
-                        column2 = self
-                            .workbook
+                        column2 = workbook
                             .worksheet(left.sheet)
                             .expect("Sheet expected during evaluation.")
                             .dimension()
@@ -905,7 +975,7 @@ impl Model {
                     }
                     for row in row1..row2 + 1 {
                         for column in column1..(column2 + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -954,25 +1024,30 @@ impl Model {
     }
 
     // SUBSTITUTE(text, old_text, new_text, [instance_num])
-    pub(crate) fn fn_substitute(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_substitute(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(2..=4).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let text = match self.get_string(&args[0], cell) {
+        let text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let old_text = match self.get_string(&args[1], cell) {
+        let old_text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let new_text = match self.get_string(&args[2], cell) {
+        let new_text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         let instance_num = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => Some(f.floor() as i32),
                 Err(s) => return s,
             }
@@ -999,14 +1074,19 @@ impl Model {
             CalcResult::String(text.replace(&old_text, &new_text))
         }
     }
-    pub(crate) fn fn_concatenate(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_concatenate(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if arg_count == 0 {
             return CalcResult::new_args_number_error(cell);
         }
         let mut text_array = Vec::new();
         for arg in args {
-            let text = match self.get_string(arg, cell) {
+            let text = match Model::get_string(workbook, cells, parsed_formulas, language, arg, cell) {
                 Ok(s) => s,
                 Err(error) => return error,
             };
@@ -1015,22 +1095,27 @@ impl Model {
         CalcResult::String(text_array.join(""))
     }
 
-    pub(crate) fn fn_exact(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_exact(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let result1 = &self.evaluate_node_in_context(&args[0], cell);
-        let result2 = &self.evaluate_node_in_context(&args[1], cell);
+        let result1 = &Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
+        let result2 = &Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
         // FIXME: Implicit intersection
         if let (CalcResult::Number(number1), CalcResult::Number(number2)) = (result1, result2) {
             // In Excel two numbers are the same if they are the same up to 15 digits.
             CalcResult::Boolean(to_precision(*number1, 15) == to_precision(*number2, 15))
         } else {
-            let string1 = match self.cast_to_string(result1.clone(), cell) {
+            let string1 = match Model::cast_to_string(workbook, cells, parsed_formulas, language, result1.clone(), cell) {
                 Ok(s) => s,
                 Err(error) => return error,
             };
-            let string2 = match self.cast_to_string(result2.clone(), cell) {
+            let string2 = match Model::cast_to_string(workbook, cells, parsed_formulas, language, result2.clone(), cell) {
                 Ok(s) => s,
                 Err(error) => return error,
             };
@@ -1038,11 +1123,16 @@ impl Model {
         }
     }
     // VALUE(text)
-    pub(crate) fn fn_value(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_value(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        match self.evaluate_node_in_context(&args[0], cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::String(text) => {
                 let currencies = vec!["$", "€"];
                 if let Ok((value, _)) = parse_formatted_number(&text, &currencies) {
@@ -1073,12 +1163,17 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_t(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_t(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
         // FIXME: Implicit intersection
-        let result = self.evaluate_node_in_context(&args[0], cell);
+        let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         match result {
             CalcResult::String(_) => result,
             error @ CalcResult::Error { .. } => error,
@@ -1087,11 +1182,16 @@ impl Model {
     }
 
     // VALUETOTEXT(value)
-    pub(crate) fn fn_valuetotext(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_valuetotext(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let text = match self.get_string(&args[0], cell) {
+        let text = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => match error {
                 CalcResult::Error { error, .. } => error.to_string(),

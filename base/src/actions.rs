@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+
 use crate::constants::{LAST_COLUMN, LAST_ROW};
 use crate::expressions::parser::stringify::DisplaceData;
-use crate::model::Model;
+use crate::expressions::parser::Node;
+use crate::language::Language;
+use crate::model::{CellState, Model};
+use crate::types::Workbook;
 
 // NOTE: There is a difference with Excel behaviour when deleting cells/rows/columns
 // In Excel if the whole range is deleted then it will substitute for #REF!
@@ -62,28 +67,29 @@ impl Model {
     /// * `target_row` - The row index of the cell's new location.
     /// * `target_column` - The column index of the cell's new location.
     fn move_cell(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         source_row: i32,
         source_column: i32,
         target_row: i32,
         target_column: i32,
     ) -> Result<(), String> {
-        let source_cell = self
-            .workbook
+        let source_cell = workbook
             .worksheet(sheet)?
             .cell(source_row, source_column)
             .ok_or("Expected Cell to exist")?;
         let style = source_cell.get_style();
         // FIXME: we need some user_input getter instead of get_text
-        let formula_or_value = self
-            .get_cell_formula(sheet, source_row, source_column)?
-            .unwrap_or_else(|| source_cell.get_text(&self.workbook.shared_strings, &self.language));
-        self.set_user_input(sheet, target_row, target_column, formula_or_value)?;
-        self.workbook
+        let formula_or_value = Model::get_cell_formula(workbook, cells, parsed_formulas, language, sheet, source_row, source_column)?
+            .unwrap_or_else(|| source_cell.get_text(workbook.shared_strings, language));
+        Model::set_user_input(workbook, cells, parsed_formulas, language, sheet, target_row, target_column, formula_or_value)?;
+    workbook
             .worksheet_mut(sheet)?
             .set_cell_style(target_row, target_column, style)?;
-        self.cell_clear_all(sheet, source_row, source_column)
+        Model::cell_clear_all(&mut workbook, sheet, source_row, source_column)
     }
 
     /// Inserts one or more new columns into the model at the specified index.

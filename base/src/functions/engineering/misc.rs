@@ -1,23 +1,27 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, types::CellReferenceIndex},
-    model::Model,
-    number_format::to_precision,
+    calc_result::CalcResult, expressions::{parser::Node, types::CellReferenceIndex}, language::Language, model::{CellState, Model}, number_format::to_precision, types::Workbook
 };
 
 impl Model {
     // DELTA(number1, [number2])
-    pub(crate) fn fn_delta(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_delta(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(1..=2).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let number1 = match self.get_number_no_bools(&args[0], cell) {
+        let number1 = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(error) => return error,
         };
         let number2 = if arg_count > 1 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => f,
                 Err(error) => return error,
             }
@@ -33,17 +37,22 @@ impl Model {
     }
 
     // GESTEP(number, [step])
-    pub(crate) fn fn_gestep(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_gestep(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(1..=2).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let number = match self.get_number_no_bools(&args[0], cell) {
+        let number = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(error) => return error,
         };
         let step = if arg_count > 1 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => f,
                 Err(error) => return error,
             }

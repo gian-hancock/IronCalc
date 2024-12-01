@@ -1,15 +1,20 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::Model,
+    calc_result::CalcResult, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, language::Language, model::Model, types::Workbook
 };
 
-use super::util::compare_values;
+use super::{util::compare_values, CellState};
 
 impl Model {
-    pub(crate) fn fn_if(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_if(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 || args.len() == 3 {
-            let cond_result = self.get_boolean(&args[0], cell);
+            let cond_result = Model::get_boolean(workbook, cells, parsed_formulas, language, &args[0], cell);
             let cond = match cond_result {
                 Ok(f) => f,
                 Err(s) => {
@@ -17,9 +22,9 @@ impl Model {
                 }
             };
             if cond {
-                return self.evaluate_node_in_context(&args[1], cell);
+                return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
             } else if args.len() == 3 {
-                return self.evaluate_node_in_context(&args[2], cell);
+                return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2], cell);
             } else {
                 return CalcResult::Boolean(false);
             }
@@ -27,12 +32,17 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_iferror(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_iferror(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 {
-            let value = self.evaluate_node_in_context(&args[0], cell);
+            let value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
             match value {
                 CalcResult::Error { .. } => {
-                    return self.evaluate_node_in_context(&args[1], cell);
+                    return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
                 }
                 _ => return value,
             }
@@ -40,12 +50,17 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_ifna(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ifna(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 {
-            let value = self.evaluate_node_in_context(&args[0], cell);
+            let value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
             if let CalcResult::Error { error, .. } = &value {
                 if error == &Error::NA {
-                    return self.evaluate_node_in_context(&args[1], cell);
+                    return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
                 }
             }
             return value;
@@ -53,9 +68,14 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_not(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_not(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.get_boolean(&args[0], cell) {
+            match Model::get_boolean(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 Ok(f) => return CalcResult::Boolean(!f),
                 Err(s) => {
                     return s;
@@ -65,10 +85,15 @@ impl Model {
         CalcResult::new_args_number_error(cell)
     }
 
-    pub(crate) fn fn_and(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_and(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut true_count = 0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Boolean(b) => {
                     if !b {
                         return CalcResult::Boolean(false);
@@ -94,7 +119,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -135,10 +160,15 @@ impl Model {
         CalcResult::Boolean(true)
     }
 
-    pub(crate) fn fn_or(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_or(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut result = false;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Boolean(value) => result = value || result,
                 CalcResult::Number(value) => {
                     if value != 0.0 {
@@ -158,7 +188,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -191,11 +221,16 @@ impl Model {
     /// XOR(logical1, [logical]*,...)
     /// Logical1 is required, subsequent logical values are optional. Can be logical values, arrays, or references.
     /// The result of XOR is TRUE when the number of TRUE inputs is odd and FALSE when the number of TRUE inputs is even.
-    pub(crate) fn fn_xor(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_xor(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut true_count = 0;
         let mut false_count = 0;
         for arg in args {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Boolean(b) => {
                     if b {
                         true_count += 1;
@@ -220,7 +255,7 @@ impl Model {
                     }
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -254,13 +289,18 @@ impl Model {
     }
 
     /// =SWITCH(expression, case1, value1, [case, value]*, [default])
-    pub(crate) fn fn_switch(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_switch(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count < 3 {
             return CalcResult::new_args_number_error(cell);
         }
         // TODO add implicit intersection
-        let expr = self.evaluate_node_in_context(&args[0], cell);
+        let expr = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if expr.is_error() {
             return expr;
         }
@@ -269,18 +309,18 @@ impl Model {
         // 3, 4 args -> 1 case
         let case_count = (args_count - 1) / 2;
         for case_index in 0..case_count {
-            let case = self.evaluate_node_in_context(&args[2 * case_index + 1], cell);
+            let case = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2 * case_index + 1], cell);
             if case.is_error() {
                 return case;
             }
             if compare_values(&expr, &case) == 0 {
-                return self.evaluate_node_in_context(&args[2 * case_index + 2], cell);
+                return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2 * case_index + 2], cell);
             }
         }
         // None of the cases matched so we return the default
         // If there is an even number of args is the last one otherwise is #N/A
         if args_count % 2 == 0 {
-            return self.evaluate_node_in_context(&args[args_count - 1], cell);
+            return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[args_count - 1], cell);
         }
         CalcResult::Error {
             error: Error::NA,
@@ -290,7 +330,12 @@ impl Model {
     }
 
     /// =IFS(condition1, value, [condition, value]*)
-    pub(crate) fn fn_ifs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ifs(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count < 2 {
             return CalcResult::new_args_number_error(cell);
@@ -301,11 +346,11 @@ impl Model {
         }
         let case_count = args_count / 2;
         for case_index in 0..case_count {
-            let value = self.get_boolean(&args[2 * case_index], cell);
+            let value = Model::get_boolean(workbook, cells, parsed_formulas, language, &args[2 * case_index], cell);
             match value {
                 Ok(b) => {
                     if b {
-                        return self.evaluate_node_in_context(&args[2 * case_index + 1], cell);
+                        return Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2 * case_index + 1], cell);
                     }
                 }
                 Err(s) => return s,

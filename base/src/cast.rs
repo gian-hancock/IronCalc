@@ -1,22 +1,32 @@
+use std::collections::HashMap;
+
 use crate::{
     calc_result::{CalcResult, Range},
     expressions::{parser::Node, token::Error, types::CellReferenceIndex},
     implicit_intersection::implicit_intersection,
-    model::Model,
+    language::Language,
+    model::{CellState, Model},
+    types::Workbook,
 };
 
 impl Model {
     pub(crate) fn get_number(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> Result<f64, CalcResult> {
-        let result = self.evaluate_node_in_context(node, cell);
-        self.cast_to_number(result, cell)
+        let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, node, cell);
+        Model::cast_to_number(workbook, cells, parsed_formulas, language, result, cell)
     }
 
     fn cast_to_number(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         result: CalcResult,
         cell: CellReferenceIndex,
     ) -> Result<f64, CalcResult> {
@@ -42,8 +52,21 @@ impl Model {
             CalcResult::Range { left, right } => {
                 match implicit_intersection(&cell, &Range { left, right }) {
                     Some(cell_reference) => {
-                        let result = self.evaluate_cell(cell_reference);
-                        self.cast_to_number(result, cell_reference)
+                        let result = Model::evaluate_cell(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            cell_reference,
+                        );
+                        Model::cast_to_number(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            result,
+                            cell_reference,
+                        )
                     }
                     None => Err(CalcResult::Error {
                         error: Error::VALUE,
@@ -56,11 +79,14 @@ impl Model {
     }
 
     pub(crate) fn get_number_no_bools(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> Result<f64, CalcResult> {
-        let result = self.evaluate_node_in_context(node, cell);
+        let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, node, cell);
         if matches!(result, CalcResult::Boolean(_)) {
             return Err(CalcResult::new_error(
                 Error::VALUE,
@@ -68,20 +94,26 @@ impl Model {
                 "Expecting number".to_string(),
             ));
         }
-        self.cast_to_number(result, cell)
+        Model::cast_to_number(workbook, cells, parsed_formulas, language, result, cell)
     }
 
     pub(crate) fn get_string(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> Result<String, CalcResult> {
-        let result = self.evaluate_node_in_context(node, cell);
-        self.cast_to_string(result, cell)
+        let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, node, cell);
+        Model::cast_to_string(workbook, cells, parsed_formulas, language, result, cell)
     }
 
     pub(crate) fn cast_to_string(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         result: CalcResult,
         cell: CellReferenceIndex,
     ) -> Result<String, CalcResult> {
@@ -102,8 +134,21 @@ impl Model {
             CalcResult::Range { left, right } => {
                 match implicit_intersection(&cell, &Range { left, right }) {
                     Some(cell_reference) => {
-                        let result = self.evaluate_cell(cell_reference);
-                        self.cast_to_string(result, cell_reference)
+                        let result = Model::evaluate_cell(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            cell_reference,
+                        );
+                        Model::cast_to_string(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            result,
+                            cell_reference,
+                        )
                     }
                     None => Err(CalcResult::Error {
                         error: Error::VALUE,
@@ -116,16 +161,22 @@ impl Model {
     }
 
     pub(crate) fn get_boolean(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> Result<bool, CalcResult> {
-        let result = self.evaluate_node_in_context(node, cell);
-        self.cast_to_bool(result, cell)
+        let result = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, node, cell);
+        Model::cast_to_bool(workbook, cells, parsed_formulas, language, result, cell)
     }
 
     fn cast_to_bool(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         result: CalcResult,
         cell: CellReferenceIndex,
     ) -> Result<bool, CalcResult> {
@@ -154,8 +205,21 @@ impl Model {
             CalcResult::Range { left, right } => {
                 match implicit_intersection(&cell, &Range { left, right }) {
                     Some(cell_reference) => {
-                        let result = self.evaluate_cell(cell_reference);
-                        self.cast_to_bool(result, cell_reference)
+                        let result = Model::evaluate_cell(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            cell_reference,
+                        );
+                        Model::cast_to_bool(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            result,
+                            cell_reference,
+                        )
                     }
                     None => Err(CalcResult::Error {
                         error: Error::VALUE,
@@ -169,7 +233,10 @@ impl Model {
 
     // tries to return a reference. That is either a reference or a formula that evaluates to a range/reference
     pub(crate) fn get_reference(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> Result<Range, CalcResult> {
@@ -195,7 +262,7 @@ impl Model {
                 Ok(Range { left, right: left })
             }
             _ => {
-                let value = self.evaluate_node_in_context(node, cell);
+                let value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, node, cell);
                 if value.is_error() {
                     return Err(value);
                 }

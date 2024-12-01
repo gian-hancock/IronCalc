@@ -24,7 +24,7 @@ use crate::{
     functions::util::compare_values,
     implicit_intersection::implicit_intersection,
     language::{get_language, Language},
-    locale::{get_locale, Currency, Locale},
+    locale::{self, get_locale, Currency, Locale},
     types::*,
     utils as common,
 };
@@ -113,7 +113,7 @@ pub struct Model {
     /// Tha language used
     pub language: Language,
     /// The timezone used to evaluate the model
-    pub(crate) tz: Tz,
+    pub tz: Tz,
     /// The view id. A view consist of a selected sheet and ranges.
     pub(crate) view_id: u32,
 }
@@ -131,7 +131,10 @@ pub struct CellIndex {
 
 impl Model {
     pub(crate) fn evaluate_node_with_reference(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> CalcResult {
@@ -207,13 +210,42 @@ impl Model {
                     },
                 }
             }
-            _ => self.evaluate_node_in_context(node, cell),
+            _ => Model::evaluate_node_in_context(
+                workbook,
+                cells,
+                parsed_formulas,
+                language,
+                node,
+                cell,
+            ),
         }
     }
 
-    fn get_range(&mut self, left: &Node, right: &Node, cell: CellReferenceIndex) -> CalcResult {
-        let left_result = self.evaluate_node_with_reference(left, cell);
-        let right_result = self.evaluate_node_with_reference(right, cell);
+    fn get_range(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        left: &Node,
+        right: &Node,
+        cell: CellReferenceIndex,
+    ) -> CalcResult {
+        let left_result = Model::evaluate_node_with_reference(
+            workbook,
+            cells,
+            parsed_formulas,
+            language,
+            left,
+            cell,
+        );
+        let right_result = Model::evaluate_node_with_reference(
+            workbook,
+            cells,
+            parsed_formulas,
+            language,
+            right,
+            cell,
+        );
         match (left_result, right_result) {
             (
                 CalcResult::Range {
@@ -250,7 +282,10 @@ impl Model {
     }
 
     pub(crate) fn evaluate_node_in_context(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> CalcResult {
@@ -259,13 +294,22 @@ impl Model {
             OpSumKind { kind, left, right } => {
                 // In the future once the feature try trait stabilizes we could use the '?' operator for this :)
                 // See: https://play.rust-lang.org/?version=nightly&mode=debug&edition=2018&gist=236044e8321a1450988e6ffe5a27dab5
-                let l = match self.get_number(left, cell) {
-                    Ok(f) => f,
-                    Err(s) => {
-                        return s;
-                    }
-                };
-                let r = match self.get_number(right, cell) {
+                let l =
+                    match Model::get_number(workbook, cells, parsed_formulas, language, left, cell)
+                    {
+                        Ok(f) => f,
+                        Err(s) => {
+                            return s;
+                        }
+                    };
+                let r = match Model::get_number(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    right,
+                    cell,
+                ) {
                     Ok(f) => f,
                     Err(s) => {
                         return s;
@@ -296,16 +340,30 @@ impl Model {
                 if !absolute_column {
                     column1 += cell.column;
                 }
-                self.evaluate_cell(CellReferenceIndex {
-                    sheet: *sheet_index,
-                    row: row1,
-                    column: column1,
-                })
+                Model::evaluate_cell(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    CellReferenceIndex {
+                        sheet: *sheet_index,
+                        row: row1,
+                        column: column1,
+                    },
+                )
             }
             WrongReferenceKind { .. } => {
                 CalcResult::new_error(Error::REF, cell, "Wrong reference".to_string())
             }
-            OpRangeKind { left, right } => self.get_range(left, right, cell),
+            OpRangeKind { left, right } => Model::get_range(
+                workbook,
+                cells,
+                parsed_formulas,
+                language,
+                left,
+                right,
+                cell,
+            ),
             WrongRangeKind { .. } => {
                 CalcResult::new_error(Error::REF, cell, "Wrong range".to_string())
             }
@@ -349,13 +407,22 @@ impl Model {
                 },
             },
             OpConcatenateKind { left, right } => {
-                let l = match self.get_string(left, cell) {
-                    Ok(f) => f,
-                    Err(s) => {
-                        return s;
-                    }
-                };
-                let r = match self.get_string(right, cell) {
+                let l =
+                    match Model::get_string(workbook, cells, parsed_formulas, language, left, cell)
+                    {
+                        Ok(f) => f,
+                        Err(s) => {
+                            return s;
+                        }
+                    };
+                let r = match Model::get_string(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    right,
+                    cell,
+                ) {
                     Ok(f) => f,
                     Err(s) => {
                         return s;
@@ -365,13 +432,22 @@ impl Model {
                 CalcResult::String(result)
             }
             OpProductKind { kind, left, right } => {
-                let l = match self.get_number(left, cell) {
-                    Ok(f) => f,
-                    Err(s) => {
-                        return s;
-                    }
-                };
-                let r = match self.get_number(right, cell) {
+                let l =
+                    match Model::get_number(workbook, cells, parsed_formulas, language, left, cell)
+                    {
+                        Ok(f) => f,
+                        Err(s) => {
+                            return s;
+                        }
+                    };
+                let r = match Model::get_number(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    right,
+                    cell,
+                ) {
                     Ok(f) => f,
                     Err(s) => {
                         return s;
@@ -393,13 +469,22 @@ impl Model {
                 CalcResult::Number(result)
             }
             OpPowerKind { left, right } => {
-                let l = match self.get_number(left, cell) {
-                    Ok(f) => f,
-                    Err(s) => {
-                        return s;
-                    }
-                };
-                let r = match self.get_number(right, cell) {
+                let l =
+                    match Model::get_number(workbook, cells, parsed_formulas, language, left, cell)
+                    {
+                        Ok(f) => f,
+                        Err(s) => {
+                            return s;
+                        }
+                    };
+                let r = match Model::get_number(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    right,
+                    cell,
+                ) {
                     Ok(f) => f,
                     Err(s) => {
                         return s;
@@ -408,7 +493,15 @@ impl Model {
                 // Deal with errors properly
                 CalcResult::Number(l.powf(r))
             }
-            FunctionKind { kind, args } => self.evaluate_function(kind, args, cell),
+            FunctionKind { kind, args } => Model::evaluate_function(
+                workbook,
+                cells,
+                parsed_formulas,
+                language,
+                kind,
+                args,
+                cell,
+            ),
             InvalidFunctionKind { name, args: _ } => {
                 CalcResult::new_error(Error::ERROR, cell, format!("Invalid function: {}", name))
             }
@@ -427,9 +520,13 @@ impl Model {
 
                 if let Some(parsed_defined_name) = parsed_defined_name {
                     match parsed_defined_name {
-                        ParsedDefinedName::CellReference(reference) => {
-                            self.evaluate_cell(*reference)
-                        }
+                        ParsedDefinedName::CellReference(reference) => Model::evaluate_cell(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            *reference,
+                        ),
                         ParsedDefinedName::RangeReference(range) => CalcResult::Range {
                             left: range.left,
                             right: range.right,
@@ -449,11 +546,25 @@ impl Model {
                 }
             }
             CompareKind { kind, left, right } => {
-                let l = self.evaluate_node_in_context(left, cell);
+                let l = Model::evaluate_node_in_context(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    left,
+                    cell,
+                );
                 if l.is_error() {
                     return l;
                 }
-                let r = self.evaluate_node_in_context(right, cell);
+                let r = Model::evaluate_node_in_context(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    right,
+                    cell,
+                );
                 if r.is_error() {
                     return r;
                 }
@@ -504,7 +615,14 @@ impl Model {
                 }
             }
             UnaryKind { kind, right } => {
-                let r = match self.get_number(right, cell) {
+                let r = match Model::get_number(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    right,
+                    cell,
+                ) {
                     Ok(f) => f,
                     Err(s) => {
                         return s;
@@ -544,9 +662,16 @@ impl Model {
     /// Sets `result` in the cell given by `sheet` sheet index, row and column
     /// Note that will panic if the cell does not exist
     /// It will do nothing if the cell does not have a formula
-    fn set_cell_value(&mut self, cell_reference: CellReferenceIndex, result: &CalcResult) {
+    fn set_cell_value(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        cell_reference: CellReferenceIndex,
+        result: &CalcResult,
+    ) {
         let CellReferenceIndex { sheet, column, row } = cell_reference;
-        let cell = &self.workbook.worksheets[sheet as usize].sheet_data[&row][&column];
+        let cell = workbook.worksheets[sheet as usize].sheet_data[&row][&column];
         let s = cell.get_style();
         if let Some(f) = cell.get_formula() {
             match result {
@@ -554,7 +679,11 @@ impl Model {
                     // safety belt
                     if value.is_nan() || value.is_infinite() {
                         // This should never happen, is there a way we can log this events?
-                        return self.set_cell_value(
+                        return Model::set_cell_value(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
                             cell_reference,
                             &CalcResult::Error {
                                 error: Error::NUM,
@@ -563,7 +692,7 @@ impl Model {
                             },
                         );
                     }
-                    *self.workbook.worksheets[sheet as usize]
+                    *workbook.worksheets[sheet as usize]
                         .sheet_data
                         .get_mut(&row)
                         .expect("expected a row")
@@ -571,7 +700,7 @@ impl Model {
                         .expect("expected a column") = Cell::CellFormulaNumber { f, s, v: *value };
                 }
                 CalcResult::String(value) => {
-                    *self.workbook.worksheets[sheet as usize]
+                    *workbook.worksheets[sheet as usize]
                         .sheet_data
                         .get_mut(&row)
                         .expect("expected a row")
@@ -583,7 +712,7 @@ impl Model {
                     };
                 }
                 CalcResult::Boolean(value) => {
-                    *self.workbook.worksheets[sheet as usize]
+                    *workbook.worksheets[sheet as usize]
                         .sheet_data
                         .get_mut(&row)
                         .expect("expected a row")
@@ -595,11 +724,11 @@ impl Model {
                     origin,
                     message,
                 } => {
-                    let o = match Model::cell_reference_to_string(&self.workbook, origin) {
+                    let o = match Model::cell_reference_to_string(&workbook, origin) {
                         Ok(s) => s,
                         Err(_) => "".to_string(),
                     };
-                    *self.workbook.worksheets[sheet as usize]
+                    *workbook.worksheets[sheet as usize]
                         .sheet_data
                         .get_mut(&row)
                         .expect("expected a row")
@@ -619,14 +748,27 @@ impl Model {
                     };
                     if let Some(intersection_cell) = implicit_intersection(&cell_reference, &range)
                     {
-                        let v = self.evaluate_cell(intersection_cell);
-                        self.set_cell_value(cell_reference, &v);
+                        let v = Model::evaluate_cell(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            intersection_cell,
+                        );
+                        Model::set_cell_value(
+                            workbook,
+                            cells,
+                            parsed_formulas,
+                            language,
+                            cell_reference,
+                            &v,
+                        );
                     } else {
-                        let o = match Model::cell_reference_to_string(&self.workbook, &cell_reference) {
+                        let o = match Model::cell_reference_to_string(&workbook, &cell_reference) {
                             Ok(s) => s,
                             Err(_) => "".to_string(),
                         };
-                        *self.workbook.worksheets[sheet as usize]
+                        *workbook.worksheets[sheet as usize]
                             .sheet_data
                             .get_mut(&row)
                             .expect("expected a row")
@@ -641,7 +783,7 @@ impl Model {
                     }
                 }
                 CalcResult::EmptyCell | CalcResult::EmptyArg => {
-                    *self.workbook.worksheets[sheet as usize]
+                    *workbook.worksheets[sheet as usize]
                         .sheet_data
                         .get_mut(&row)
                         .expect("expected a row")
@@ -666,8 +808,15 @@ impl Model {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_sheet_color(&mut self, sheet: u32, color: &str) -> Result<(), String> {
-        let worksheet = self.workbook.worksheet_mut(sheet)?;
+    pub fn set_sheet_color(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet: u32,
+        color: &str,
+    ) -> Result<(), String> {
+        let worksheet = workbook.worksheet_mut(sheet)?;
         if color.is_empty() {
             worksheet.color = None;
             return Ok(());
@@ -680,8 +829,12 @@ impl Model {
     }
 
     /// Makes the grid lines in the sheet visible (`true`) or hidden (`false`)
-    pub fn set_show_grid_lines(&mut self, sheet: u32, show_grid_lines: bool) -> Result<(), String> {
-        let worksheet = self.workbook.worksheet_mut(sheet)?;
+    pub fn set_show_grid_lines(
+        workbook: &Workbook,
+        sheet: u32,
+        show_grid_lines: bool,
+    ) -> Result<(), String> {
+        let worksheet = workbook.worksheet_mut(sheet)?;
         worksheet.show_grid_lines = show_grid_lines;
         Ok(())
     }
@@ -745,12 +898,26 @@ impl Model {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn is_empty_cell(&self, sheet: u32, row: i32, column: i32) -> Result<bool, String> {
-        self.workbook.worksheet(sheet)?.is_empty_cell(row, column)
+    pub fn is_empty_cell(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet: u32,
+        row: i32,
+        column: i32,
+    ) -> Result<bool, String> {
+        workbook.worksheet(sheet)?.is_empty_cell(row, column)
     }
 
-    pub(crate) fn evaluate_cell(&mut self, cell_reference: CellReferenceIndex) -> CalcResult {
-        let row_data = match self.workbook.worksheets[cell_reference.sheet as usize]
+    pub(crate) fn evaluate_cell(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        cell_reference: CellReferenceIndex,
+    ) -> CalcResult {
+        let row_data = match workbook.worksheets[cell_reference.sheet as usize]
             .sheet_data
             .get(&cell_reference.row)
         {
@@ -771,7 +938,7 @@ impl Model {
                     cell_reference.row,
                     cell_reference.column,
                 );
-                match self.cells.get(&key) {
+                match cells.get(&key) {
                     Some(CellState::Evaluating) => {
                         return CalcResult::new_error(
                             Error::CIRC,
@@ -780,21 +947,28 @@ impl Model {
                         );
                     }
                     Some(CellState::Evaluated) => {
-                        return Model::get_cell_value(&self.language, &self.workbook, cell, cell_reference);
+                        return Model::get_cell_value(language, workbook, cell, cell_reference);
                     }
                     _ => {
                         // mark cell as being evaluated
-                        self.cells.insert(key, CellState::Evaluating);
+                        cells.insert(key, CellState::Evaluating);
                     }
                 }
-                let node = &self.parsed_formulas[cell_reference.sheet as usize][f as usize].clone();
-                let result = self.evaluate_node_in_context(node, cell_reference);
-                self.set_cell_value(cell_reference, &result);
+                let node = parsed_formulas[cell_reference.sheet as usize][f as usize].clone();
+                let result = Model::evaluate_node_in_context(
+                    workbook,
+                    cells,
+                    parsed_formulas,
+                    language,
+                    &node,
+                    cell_reference,
+                );
+                Model::set_cell_value( workbook, cells, parsed_formulas, language, cell_reference, &result);
                 // mark cell as evaluated
-                self.cells.insert(key, CellState::Evaluated);
+                cells.insert(key, CellState::Evaluated);
                 result
             }
-            None => Model::get_cell_value(&self.language, &self.workbook, cell, cell_reference),
+            None => Model::get_cell_value(language, workbook, cell, cell_reference),
         }
     }
 
@@ -899,7 +1073,11 @@ impl Model {
         };
 
         model.parse_formulas();
-        Model::parse_defined_names(&mut model.workbook, &model.locale, &mut model.parsed_defined_names);
+        Model::parse_defined_names(
+            &mut model.workbook,
+            &model.locale,
+            &mut model.parsed_defined_names,
+        );
 
         Ok(model)
     }
@@ -995,7 +1173,10 @@ impl Model {
     /// * [Model::extend_to()]
     /// * [Model::extend_copied_value()]
     pub fn move_cell_value_to_area(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         value: &str,
         source: &CellReferenceIndex,
         target: &CellReferenceIndex,
@@ -1072,14 +1253,14 @@ impl Model {
         target_row: i32,
         target_column: i32,
     ) -> Result<String, String> {
-        let cell = self.workbook.worksheet(sheet)?.cell(row, column);
+        let cell = workbook.worksheet(sheet)?.cell(row, column);
         let result = match cell {
             Some(cell) => match cell.get_formula() {
-                None => cell.get_text(&self.workbook.shared_strings, &self.language),
+                None => cell.get_text(&workbook.shared_strings, &self.language),
                 Some(i) => {
-                    let formula = &self.parsed_formulas[sheet as usize][i as usize];
+                    let formula = parsed_formulas[sheet as usize][i as usize];
                     let cell_ref = CellReferenceRC {
-                        sheet: self.workbook.worksheets[sheet as usize].get_name(),
+                        sheet: workbook.worksheets[sheet as usize].get_name(),
                         row: target_row,
                         column: target_column,
                     };
@@ -1112,18 +1293,21 @@ impl Model {
     /// * [Model::extend_to()]
     /// * [Model::move_cell_value_to_area()]
     pub fn extend_copied_value(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         value: &str,
         source: &CellReferenceIndex,
         target: &CellReferenceIndex,
     ) -> Result<String, String> {
-        let source_sheet_name = match self.workbook.worksheets.get(source.sheet as usize) {
+        let source_sheet_name = match workbook.worksheets.get(source.sheet as usize) {
             Some(ws) => ws.get_name(),
             None => {
                 return Err("Invalid worksheet index".to_owned());
             }
         };
-        let target_sheet_name = match self.workbook.worksheets.get(target.sheet as usize) {
+        let target_sheet_name = match workbook.worksheets.get(target.sheet as usize) {
             Some(ws) => ws.get_name(),
             None => {
                 return Err("Invalid worksheet index".to_owned());
@@ -1166,17 +1350,19 @@ impl Model {
     /// See also:
     /// * [Model::get_cell_content()]
     pub fn get_cell_formula(
-        &self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
     ) -> Result<Option<String>, String> {
-        let worksheet = self.workbook.worksheet(sheet)?;
+        let worksheet = workbook.worksheet(sheet)?;
         match worksheet.cell(row, column) {
             Some(cell) => match cell.get_formula() {
                 Some(formula_index) => {
-                    let formula = &self
-                        .parsed_formulas
+                    let formula = parsed_formulas
                         .get(sheet as usize)
                         .ok_or("missing sheet")?
                         .get(formula_index as usize)
@@ -1219,20 +1405,23 @@ impl Model {
     /// * [Model::update_cell_with_bool()]
     /// * [Model::update_cell_with_formula()]
     pub fn update_cell_with_text(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
         value: &str,
     ) -> Result<(), String> {
-        let style_index = self.get_cell_style_index(sheet, row, column)?;
+        let style_index = Model::get_cell_style_index(workbook, sheet, row, column)?;
         let new_style_index;
         if common::value_needs_quoting(value, &self.language) {
             new_style_index = self
                 .workbook
                 .styles
                 .get_style_with_quote_prefix(style_index)?;
-        } else if self.workbook.styles.style_is_quote_prefix(style_index) {
+        } else if workbook.styles.style_is_quote_prefix(style_index) {
             new_style_index = self
                 .workbook
                 .styles
@@ -1269,21 +1458,24 @@ impl Model {
     /// * [Model::update_cell_with_text()]
     /// * [Model::update_cell_with_formula()]
     pub fn update_cell_with_bool(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
         value: bool,
     ) -> Result<(), String> {
-        let style_index = self.get_cell_style_index(sheet, row, column)?;
-        let new_style_index = if self.workbook.styles.style_is_quote_prefix(style_index) {
-            self.workbook
+        let style_index = Model::get_cell_style_index(workbook, sheet, row, column)?;
+        let new_style_index = if workbook.styles.style_is_quote_prefix(style_index) {
+            workbook
                 .styles
                 .get_style_without_quote_prefix(style_index)?
         } else {
             style_index
         };
-        Model::set_cell_with_boolean(&mut self.workbook, sheet, row, column, value, new_style_index)
+        Model::set_cell_with_boolean(&mut workbook, sheet, row, column, value, new_style_index)
     }
 
     /// Updates the value of a cell with a number
@@ -1311,21 +1503,24 @@ impl Model {
     /// * [Model::update_cell_with_bool()]
     /// * [Model::update_cell_with_formula()]
     pub fn update_cell_with_number(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
         value: f64,
     ) -> Result<(), String> {
-        let style_index = self.get_cell_style_index(sheet, row, column)?;
-        let new_style_index = if self.workbook.styles.style_is_quote_prefix(style_index) {
-            self.workbook
+        let style_index = Model::get_cell_style_index(workbook, sheet, row, column)?;
+        let new_style_index = if workbook.styles.style_is_quote_prefix(style_index) {
+            workbook
                 .styles
                 .get_style_without_quote_prefix(style_index)?
         } else {
             style_index
         };
-        Model::set_cell_with_number(&mut self.workbook, sheet, row, column, value, new_style_index)
+        Model::set_cell_with_number(&mut workbook, sheet, row, column, value, new_style_index)
     }
 
     /// Updates the formula of given cell
@@ -1356,14 +1551,17 @@ impl Model {
     /// * [Model::update_cell_with_bool()]
     /// * [Model::update_cell_with_text()]
     pub fn update_cell_with_formula(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
         formula: String,
     ) -> Result<(), String> {
-        let mut style_index = self.get_cell_style_index(sheet, row, column)?;
-        if self.workbook.styles.style_is_quote_prefix(style_index) {
+        let mut style_index = Model::get_cell_style_index(workbook, sheet, row, column)?;
+        if workbook.styles.style_is_quote_prefix(style_index) {
             style_index = self
                 .workbook
                 .styles
@@ -1408,27 +1606,28 @@ impl Model {
     /// * [Model::update_cell_with_bool()]
     /// * [Model::update_cell_with_text()]
     pub fn set_user_input(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
         value: String,
     ) -> Result<(), String> {
         // If value starts with "'" then we force the style to be quote_prefix
-        let style_index = self.get_cell_style_index(sheet, row, column)?;
+        let style_index = Model::get_cell_style_index(workbook, sheet, row, column)?;
         if let Some(new_value) = value.strip_prefix('\'') {
             // First check if it needs quoting
             let new_style = if common::value_needs_quoting(new_value, &self.language) {
-                self.workbook
-                    .styles
-                    .get_style_with_quote_prefix(style_index)?
+                workbook.styles.get_style_with_quote_prefix(style_index)?
             } else {
                 style_index
             };
             self.set_cell_with_string(sheet, row, column, new_value, new_style)?;
         } else {
             let mut new_style_index = style_index;
-            if self.workbook.styles.style_is_quote_prefix(style_index) {
+            if workbook.styles.style_is_quote_prefix(style_index) {
                 new_style_index = self
                     .workbook
                     .styles
@@ -1439,13 +1638,13 @@ impl Model {
                     self.set_cell_with_formula(sheet, row, column, formula, new_style_index)?;
                 // Update the style if needed
                 let cell = CellReferenceIndex { sheet, row, column };
-                let parsed_formula = &self.parsed_formulas[sheet as usize][formula_index as usize];
+                let parsed_formula = parsed_formulas[sheet as usize][formula_index as usize];
                 if let Some(units) = self.compute_node_units(parsed_formula, &cell) {
                     let new_style_index = self
                         .workbook
                         .styles
                         .get_style_with_format(new_style_index, &units.get_num_fmt())?;
-                    let style = self.workbook.styles.get_style(new_style_index)?;
+                    let style = workbook.styles.get_style(new_style_index)?;
                     self.set_cell_style(sheet, row, column, &style)?
                 }
             } else {
@@ -1461,7 +1660,7 @@ impl Model {
                         // Should not apply the format in the following cases:
                         // - we assign a date to already date-formatted cell
                         let should_apply_format = !(is_likely_date_number_format(
-                            &self.workbook.styles.get_style(new_style_index)?.num_fmt,
+                            &workbook.styles.get_style(new_style_index)?.num_fmt,
                         ) && is_likely_date_number_format(&num_fmt));
                         if should_apply_format {
                             new_style_index = self
@@ -1470,19 +1669,19 @@ impl Model {
                                 .get_style_with_format(new_style_index, &num_fmt)?;
                         }
                     }
-                    let worksheet = self.workbook.worksheet_mut(sheet)?;
+                    let worksheet = workbook.worksheet_mut(sheet)?;
                     worksheet.set_cell_with_number(row, column, v, new_style_index)?;
                     return Ok(());
                 }
                 // We try to parse as boolean
                 if let Ok(v) = value.to_lowercase().parse::<bool>() {
-                    let worksheet = self.workbook.worksheet_mut(sheet)?;
+                    let worksheet = workbook.worksheet_mut(sheet)?;
                     worksheet.set_cell_with_boolean(row, column, v, new_style_index)?;
                     return Ok(());
                 }
                 // Check is it is error value
                 let upper = value.to_uppercase();
-                let worksheet = self.workbook.worksheet_mut(sheet)?;
+                let worksheet = workbook.worksheet_mut(sheet)?;
                 match get_error_by_name(&upper, &self.language) {
                     Some(error) => {
                         worksheet.set_cell_with_error(row, column, error, new_style_index)?;
@@ -1497,14 +1696,17 @@ impl Model {
     }
 
     fn set_cell_with_formula(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
         formula: &str,
         style: i32,
     ) -> Result<i32, String> {
-        let worksheet = self.workbook.worksheet_mut(sheet)?;
+        let worksheet = workbook.worksheet_mut(sheet)?;
         let cell_reference = CellReferenceRC {
             sheet: worksheet.get_name(),
             row,
@@ -1539,7 +1741,10 @@ impl Model {
     }
 
     fn set_cell_with_string(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet: u32,
         row: i32,
         column: i32,
@@ -1548,7 +1753,7 @@ impl Model {
     ) -> Result<(), String> {
         match self.shared_strings.get(value) {
             Some(string_index) => {
-                self.workbook.worksheet_mut(sheet)?.set_cell_with_string(
+                workbook.worksheet_mut(sheet)?.set_cell_with_string(
                     row,
                     column,
                     *string_index as i32,
@@ -1556,10 +1761,10 @@ impl Model {
                 )?;
             }
             None => {
-                let string_index = self.workbook.shared_strings.len();
-                self.workbook.shared_strings.push(value.to_string());
+                let string_index = workbook.shared_strings.len();
+                workbook.shared_strings.push(value.to_string());
                 self.shared_strings.insert(value.to_string(), string_index);
-                self.workbook.worksheet_mut(sheet)?.set_cell_with_string(
+                workbook.worksheet_mut(sheet)?.set_cell_with_string(
                     row,
                     column,
                     string_index as i32,
@@ -1600,7 +1805,11 @@ impl Model {
     ///
     /// See also:
     /// * [Model::get_cell_value_by_index()]
-    pub fn get_cell_value_by_ref(workbook: &Workbook, language: &Language, cell_ref: &str) -> Result<CellValue, String> {
+    pub fn get_cell_value_by_ref(
+        workbook: &Workbook,
+        language: &Language,
+        cell_ref: &str,
+    ) -> Result<CellValue, String> {
         let cell_reference = match Model::parse_reference(workbook, cell_ref) {
             Some(c) => c,
             None => return Err(format!("Error parsing reference: '{cell_ref}'")),
@@ -1653,17 +1862,20 @@ impl Model {
     /// # }
     /// ```
     pub fn get_formatted_cell_value(
-        &self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         sheet_index: u32,
         row: i32,
         column: i32,
     ) -> Result<String, String> {
-        match self.workbook.worksheet(sheet_index)?.cell(row, column) {
+        match workbook.worksheet(sheet_index)?.cell(row, column) {
             Some(cell) => {
-                let format = self.get_style_for_cell(sheet_index, row, column)?.num_fmt;
+                let format = Model::get_style_for_cell(workbook, sheet_index, row, column)?.num_fmt;
                 let formatted_value =
-                    cell.formatted_value(&self.workbook.shared_strings, &self.language, |value| {
-                        format_number(value, &format, &self.locale).text
+                    cell.formatted_value(&workbook.shared_strings, language, |value| {
+                        format_number(value, &format, locale).text
                     });
                 Ok(formatted_value)
             }
@@ -1672,8 +1884,10 @@ impl Model {
     }
 
     /// Return the typeof a cell
-    pub fn get_cell_type(&self, sheet: u32, row: i32, column: i32) -> Result<CellType, String> {
-        Ok(match self.workbook.worksheet(sheet)?.cell(row, column) {
+    pub fn get_cell_type(
+        workbook: &Workbook,    
+        sheet: u32, row: i32, column: i32) -> Result<CellType, String> {
+        Ok(match workbook.worksheet(sheet)?.cell(row, column) {
             Some(c) => c.get_type(),
             None => CellType::Number,
         })
@@ -1682,23 +1896,28 @@ impl Model {
     /// Returns a string with the cell content. If there is a formula returns the formula
     /// If the cell is empty returns the empty string
     /// Raises an error if there is no worksheet
-    pub fn get_cell_content(&self, sheet: u32, row: i32, column: i32) -> Result<String, String> {
-        let worksheet = self.workbook.worksheet(sheet)?;
+    pub fn get_cell_content(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet: u32, row: i32, column: i32) -> Result<String, String> {
+        let worksheet = workbook.worksheet(sheet)?;
         let cell = match worksheet.cell(row, column) {
             Some(c) => c,
             None => return Ok("".to_string()),
         };
         match cell.get_formula() {
             Some(formula_index) => {
-                let formula = &self.parsed_formulas[sheet as usize][formula_index as usize];
+                let formula = parsed_formulas[sheet as usize][formula_index as usize];
                 let cell_ref = CellReferenceRC {
                     sheet: worksheet.get_name(),
                     row,
                     column,
                 };
-                Ok(format!("={}", to_string(formula, &cell_ref)))
+                Ok(format!("={}", to_string(*formula, &cell_ref)))
             }
-            None => Ok(cell.get_text(&self.workbook.shared_strings, &self.language)),
+            None => Ok(cell.get_text(&workbook.shared_strings, language)),
         }
     }
 
@@ -1725,18 +1944,29 @@ impl Model {
     }
 
     /// Evaluates the model with a top-down recursive algorithm
-    pub fn evaluate(&mut self) {
+    pub fn evaluate(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+    ) {
         // clear all computation artifacts
-        self.cells.clear();
+        cells.clear();
 
-        let cells = Model::get_all_cells(&self.workbook);
+        let all_cells = Model::get_all_cells(workbook);
 
-        for cell in cells {
-            self.evaluate_cell(CellReferenceIndex {
-                sheet: cell.index,
-                row: cell.row,
-                column: cell.column,
-            });
+        for cell in all_cells {
+            Model::evaluate_cell(
+                workbook,
+                cells,
+                parsed_formulas,
+                language,
+                CellReferenceIndex {
+                    sheet: cell.index,
+                    row: cell.row,
+                    column: cell.column,
+                },
+            );
         }
     }
 
@@ -1760,8 +1990,8 @@ impl Model {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn cell_clear_contents(&mut self, sheet: u32, row: i32, column: i32) -> Result<(), String> {
-        self.workbook
+    pub fn cell_clear_contents(workbook: &Workbook, sheet: u32, row: i32, column: i32) -> Result<(), String> {
+        workbook
             .worksheet_mut(sheet)?
             .cell_clear_contents(row, column)?;
         Ok(())
@@ -1786,8 +2016,8 @@ impl Model {
     /// assert_eq!(result, "10".to_string());
     /// # Ok(())
     /// # }
-    pub fn cell_clear_all(&mut self, sheet: u32, row: i32, column: i32) -> Result<(), String> {
-        let worksheet = self.workbook.worksheet_mut(sheet)?;
+    pub fn cell_clear_all(workbook: &mut Workbook, sheet: u32, row: i32, column: i32) -> Result<(), String> {
+        let worksheet = workbook.worksheet_mut(sheet)?;
 
         let sheet_data = &mut worksheet.sheet_data;
         if let Some(row_data) = sheet_data.get_mut(&row) {
@@ -1798,14 +2028,16 @@ impl Model {
     }
 
     /// Returns the style index for cell (`sheet`, `row`, `column`)
-    pub fn get_cell_style_index(&self, sheet: u32, row: i32, column: i32) -> Result<i32, String> {
+    pub fn get_cell_style_index(
+        workbook: &Workbook,
+        sheet: u32, row: i32, column: i32) -> Result<i32, String> {
         // First check the cell, then row, the column
-        let cell = self.workbook.worksheet(sheet)?.cell(row, column);
+        let cell = workbook.worksheet(sheet)?.cell(row, column);
 
         match cell {
             Some(cell) => Ok(cell.get_style()),
             None => {
-                let rows = &self.workbook.worksheet(sheet)?.rows;
+                let rows = &workbook.worksheet(sheet)?.rows;
                 for r in rows {
                     if r.r == row {
                         if r.custom_format {
@@ -1814,7 +2046,7 @@ impl Model {
                         break;
                     }
                 }
-                let cols = &self.workbook.worksheet(sheet)?.cols;
+                let cols = &workbook.worksheet(sheet)?.cols;
                 for c in cols.iter() {
                     let min = c.min;
                     let max = c.max;
@@ -1828,9 +2060,11 @@ impl Model {
     }
 
     /// Returns the style for cell (`sheet`, `row`, `column`)
-    pub fn get_style_for_cell(&self, sheet: u32, row: i32, column: i32) -> Result<Style, String> {
-        let style_index = self.get_cell_style_index(sheet, row, column)?;
-        let style = self.workbook.styles.get_style(style_index)?;
+    pub fn get_style_for_cell(
+        workbook: &Workbook,    
+        sheet: u32, row: i32, column: i32) -> Result<Style, String> {
+        let style_index = Model::get_cell_style_index(workbook, sheet, row, column)?;
+        let style = workbook.styles.get_style(style_index)?;
         Ok(style)
     }
 
@@ -1838,8 +2072,8 @@ impl Model {
     ///
     /// See also:
     /// * [Model::from_bytes]
-    pub fn to_bytes(&self) -> Vec<u8> {
-        bitcode::encode(&self.workbook)
+    pub fn to_bytes(workbook: &Workbook) -> Vec<u8> {
+        bitcode::encode(workbook)
     }
 
     /// Returns data about the worksheets
@@ -1857,8 +2091,13 @@ impl Model {
     }
 
     /// Returns markup representation of the given `sheet`.
-    pub fn get_sheet_markup(&self, sheet: u32) -> Result<String, String> {
-        let worksheet = self.workbook.worksheet(sheet)?;
+    pub fn get_sheet_markup(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet: u32) -> Result<String, String> {
+        let worksheet = workbook.worksheet(sheet)?;
         let dimension = worksheet.dimension();
 
         let mut rows = Vec::new();
@@ -1867,11 +2106,11 @@ impl Model {
             let mut row_markup: Vec<String> = Vec::new();
 
             for column in 1..(dimension.max_column + 1) {
-                let mut cell_markup = match self.get_cell_formula(sheet, row, column)? {
+                let mut cell_markup = match Model::get_cell_formula(workbook, cells, parsed_formulas, language, sheet, row, column)? {
                     Some(formula) => formula,
-                    None => self.get_formatted_cell_value(sheet, row, column)?,
+                    None => Model::get_formatted_cell_value(workbook, cells, parsed_formulas, language, sheet, row, column)?,
                 };
-                let style = self.get_style_for_cell(sheet, row, column)?;
+                let style = Model::get_style_for_cell(workbook, sheet, row, column)?;
                 if style.font.b {
                     cell_markup = format!("**{cell_markup}**")
                 }
@@ -1927,7 +2166,11 @@ impl Model {
 
     /// Sets the number of frozen rows to `frozen_rows` in the workbook.
     /// Fails if `frozen`_rows` is either too small (<0) or too large (>LAST_ROW)`
-    pub fn set_frozen_rows(workbook: &mut Workbook, sheet: u32, frozen_rows: i32) -> Result<(), String> {
+    pub fn set_frozen_rows(
+        workbook: &mut Workbook,
+        sheet: u32,
+        frozen_rows: i32,
+    ) -> Result<(), String> {
         if let Some(worksheet) = workbook.worksheets.get_mut(sheet as usize) {
             if frozen_rows < 0 {
                 return Err("Frozen rows cannot be negative".to_string());
@@ -1944,7 +2187,11 @@ impl Model {
 
     /// Sets the number of frozen columns to `frozen_column` in the workbook.
     /// Fails if `frozen`_columns` is either too small (<0) or too large (>LAST_COLUMN)`
-    pub fn set_frozen_columns(workbook: &mut Workbook, sheet: u32, frozen_columns: i32) -> Result<(), String> {
+    pub fn set_frozen_columns(
+        workbook: &mut Workbook,
+        sheet: u32,
+        frozen_columns: i32,
+    ) -> Result<(), String> {
         if let Some(worksheet) = workbook.worksheets.get_mut(sheet as usize) {
             if frozen_columns < 0 {
                 return Err("Frozen columns cannot be negative".to_string());
@@ -1967,7 +2214,12 @@ impl Model {
 
     /// Sets the width of a column
     #[inline]
-    pub fn set_column_width(workbook: &mut Workbook, sheet: u32, column: i32, width: f64) -> Result<(), String> {
+    pub fn set_column_width(
+        workbook: &mut Workbook,
+        sheet: u32,
+        column: i32,
+        width: f64,
+    ) -> Result<(), String> {
         workbook
             .worksheet_mut(sheet)?
             .set_column_width(column, width)
@@ -1981,7 +2233,12 @@ impl Model {
 
     /// Sets the height of a row
     #[inline]
-    pub fn set_row_height(workbook: &mut Workbook, sheet: u32, column: i32, height: f64) -> Result<(), String> {
+    pub fn set_row_height(
+        workbook: &mut Workbook,
+        sheet: u32,
+        column: i32,
+        height: f64,
+    ) -> Result<(), String> {
         workbook
             .worksheet_mut(sheet)?
             .set_row_height(column, height)

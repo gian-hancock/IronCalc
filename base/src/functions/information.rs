@@ -1,13 +1,20 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::{Model, ParsedDefinedName},
+    calc_result::CalcResult, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, language::Language, model::{Model, ParsedDefinedName}, types::Workbook
 };
 
+use super::CellState;
+
 impl Model {
-    pub(crate) fn fn_isnumber(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isnumber(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Number(_) => return CalcResult::Boolean(true),
                 _ => {
                     return CalcResult::Boolean(false);
@@ -16,9 +23,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_istext(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_istext(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::String(_) => return CalcResult::Boolean(true),
                 _ => {
                     return CalcResult::Boolean(false);
@@ -27,9 +39,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_isnontext(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isnontext(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::String(_) => return CalcResult::Boolean(false),
                 _ => {
                     return CalcResult::Boolean(true);
@@ -38,9 +55,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_islogical(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_islogical(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Boolean(_) => return CalcResult::Boolean(true),
                 _ => {
                     return CalcResult::Boolean(false);
@@ -49,9 +71,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_isblank(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isblank(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::EmptyCell => return CalcResult::Boolean(true),
                 _ => {
                     return CalcResult::Boolean(false);
@@ -60,9 +87,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_iserror(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_iserror(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Error { .. } => return CalcResult::Boolean(true),
                 _ => {
                     return CalcResult::Boolean(false);
@@ -71,9 +103,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_iserr(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_iserr(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Error { error, .. } => {
                     if Error::NA == error {
                         return CalcResult::Boolean(false);
@@ -88,9 +125,14 @@ impl Model {
         }
         CalcResult::new_args_number_error(cell)
     }
-    pub(crate) fn fn_isna(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isna(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 1 {
-            match self.evaluate_node_in_context(&args[0], cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
                 CalcResult::Error { error, .. } => {
                     if error == Error::NA {
                         return CalcResult::Boolean(true);
@@ -108,7 +150,12 @@ impl Model {
 
     // Returns true if it is a reference or evaluates to a reference
     // But DOES NOT evaluate
-    pub(crate) fn fn_isref(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isref(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
@@ -121,22 +168,32 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_isodd(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isodd(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number_no_bools(&args[0], cell) {
+        let value = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f.abs().trunc() as i64,
             Err(s) => return s,
         };
         CalcResult::Boolean(value % 2 == 1)
     }
 
-    pub(crate) fn fn_iseven(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_iseven(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number_no_bools(&args[0], cell) {
+        let value = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f.abs().trunc() as i64,
             Err(s) => return s,
         };
@@ -144,11 +201,16 @@ impl Model {
     }
 
     // ISFORMULA arg needs to be a reference or something that evaluates to a reference
-    pub(crate) fn fn_isformula(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_isformula(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        if let CalcResult::Range { left, right } = self.evaluate_node_with_reference(&args[0], cell)
+        if let CalcResult::Range { left, right } = Model::evaluate_node_with_reference(workbook, cells, parsed_formulas, language, &args[0], cell)
         {
             if left.sheet != right.sheet {
                 return CalcResult::Error {
@@ -165,7 +227,7 @@ impl Model {
                     message: "argument must be a reference to a single cell".to_string(),
                 };
             }
-            let is_formula = if let Ok(f) = self.get_cell_formula(left.sheet, left.row, left.column)
+            let is_formula = if let Ok(f) = Model::get_cell_formula(workbook, cells, parsed_formulas, language, left.sheet, left.row, left.column)
             {
                 f.is_some()
             } else {
@@ -181,11 +243,16 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_errortype(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_errortype(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        match self.evaluate_node_in_context(&args[0], cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::Error { error, .. } => {
                 match error {
                     Error::NULL => CalcResult::Number(1.0),
@@ -220,11 +287,16 @@ impl Model {
 
     // Excel believes for some reason that TYPE(A1:A7) is an array formula
     // Although we evaluate the same as Excel we cannot, ATM import this from excel
-    pub(crate) fn fn_type(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_type(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        match self.evaluate_node_in_context(&args[0], cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::String(_) => CalcResult::Number(2.0),
             CalcResult::Number(_) => CalcResult::Number(1.0),
             CalcResult::Boolean(_) => CalcResult::Number(4.0),
@@ -237,7 +309,12 @@ impl Model {
             }
         }
     }
-    pub(crate) fn fn_sheet(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_sheet(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if arg_count > 1 {
             return CalcResult::new_args_number_error(cell);
@@ -250,7 +327,7 @@ impl Model {
         let arg = &args[0];
         if let Node::VariableKind(name) = arg {
             // Let's see if it is a defined name
-            if let Some(defined_name) = self.parsed_defined_names.get(&(None, name.to_lowercase()))
+            if let Some(defined_name) = parsed_defined_names.get(&(None, name.to_lowercase()))
             {
                 match defined_name {
                     ParsedDefinedName::CellReference(reference) => {
@@ -269,9 +346,9 @@ impl Model {
                 }
             }
             // Now let's see if it is a table
-            for (table_name, table) in &self.workbook.tables {
+            for (table_name, table) in workbook.tables {
                 if table_name == name {
-                    if let Some(sheet_index) = Model::get_sheet_index_by_name(&self.workbook, &table.sheet_name) {
+                    if let Some(sheet_index) = Model::get_sheet_index_by_name(workbook, &table.sheet_name) {
                         return CalcResult::Number(sheet_index as f64 + 1.0);
                     } else {
                         break;
@@ -280,11 +357,11 @@ impl Model {
             }
         }
         // Now it should be the name of a sheet
-        let sheet_name = match self.get_string(arg, cell) {
+        let sheet_name = match Model::get_string(workbook, cells, parsed_formulas, language, arg, cell) {
             Ok(s) => s,
             Err(e) => return e,
         };
-        if let Some(sheet_index) = Model::get_sheet_index_by_name(&self.workbook, &sheet_name) {
+        if let Some(sheet_index) = Model::get_sheet_index_by_name(workbook, &sheet_name) {
             return CalcResult::Number(sheet_index as f64 + 1.0);
         }
         CalcResult::Error {

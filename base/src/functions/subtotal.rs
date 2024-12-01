@@ -1,13 +1,14 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{
+    calc_result::CalcResult, expressions::{
         parser::{parse_range, Node},
         token::Error,
         types::CellReferenceIndex,
-    },
-    functions::Function,
-    model::Model,
+    }, functions::Function, language::Language, model::Model, types::Workbook
 };
+
+use super::CellState;
 
 /// Excel has a complicated way of filtering + hidden rows
 /// As a first a approximation a table can either have filtered rows or hidden rows, but not both.
@@ -33,12 +34,17 @@ pub enum CellTableStatus {
 }
 
 impl Model {
-    fn get_table_for_cell(&self, sheet_index: u32, row: i32, column: i32) -> bool {
-        let worksheet = match self.workbook.worksheet(sheet_index) {
+    fn get_table_for_cell(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet_index: u32, row: i32, column: i32) -> bool {
+        let worksheet = match workbook.worksheet(sheet_index) {
             Ok(ws) => ws,
             Err(_) => return false,
         };
-        for table in self.workbook.tables.values() {
+        for table in workbook.tables.values() {
             if worksheet.name != table.sheet_name {
                 continue;
             }
@@ -53,8 +59,13 @@ impl Model {
         false
     }
 
-    fn cell_hidden_status(&self, sheet_index: u32, row: i32, column: i32) -> CellTableStatus {
-        let worksheet = self.workbook.worksheet(sheet_index).expect("");
+    fn cell_hidden_status(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet_index: u32, row: i32, column: i32) -> CellTableStatus {
+        let worksheet = workbook.worksheet(sheet_index).expect("");
         let mut hidden = false;
         for row_style in &worksheet.rows {
             if row_style.r == row {
@@ -66,7 +77,7 @@ impl Model {
             return CellTableStatus::Normal;
         }
         // The row is hidden we need to know if the table has filters
-        if self.get_table_for_cell(sheet_index, row, column) {
+        if Model::get_table_for_cell(workbook, cells, parsed_formulas, language, sheet_index, row, column) {
             CellTableStatus::Filtered
         } else {
             CellTableStatus::Hidden
@@ -74,8 +85,13 @@ impl Model {
     }
 
     // FIXME(TD): This is too much
-    fn cell_is_subtotal(&self, sheet_index: u32, row: i32, column: i32) -> bool {
-        let row_data = match self.workbook.worksheets[sheet_index as usize]
+    fn cell_is_subtotal(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        sheet_index: u32, row: i32, column: i32) -> bool {
+        let row_data = match workbook.worksheets[sheet_index as usize]
             .sheet_data
             .get(&row)
         {
@@ -91,7 +107,7 @@ impl Model {
 
         match cell.get_formula() {
             Some(f) => {
-                let node = &self.parsed_formulas[sheet_index as usize][f as usize];
+                let node = &parsed_formulas[sheet_index as usize][f as usize];
                 matches!(
                     node,
                     Node::FunctionKind {
@@ -105,7 +121,10 @@ impl Model {
     }
 
     fn subtotal_get_values(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
@@ -120,7 +139,7 @@ impl Model {
                     // skip
                 }
                 _ => {
-                    match self.evaluate_node_with_reference(arg, cell) {
+                    match Model::evaluate_node_with_reference(workbook, cells, parsed_formulas, language, arg, cell) {
                         CalcResult::String(_) | CalcResult::Boolean(_) => {
                             // Skip
                         }
@@ -143,7 +162,7 @@ impl Model {
                             let column2 = right.column;
 
                             for row in row1..=row2 {
-                                let cell_status = self.cell_hidden_status(left.sheet, row, column1);
+                                let cell_status = Model::cell_hidden_status(workbook, cells, parsed_formulas, language, left.sheet, row, column1);
                                 if cell_status == CellTableStatus::Filtered {
                                     continue;
                                 }
@@ -153,10 +172,10 @@ impl Model {
                                     continue;
                                 }
                                 for column in column1..=column2 {
-                                    if self.cell_is_subtotal(left.sheet, row, column) {
+                                    if Model::cell_is_subtotal(workbook, cells, parsed_formulas, language, left.sheet, row, column) {
                                         continue;
                                     }
-                                    match self.evaluate_cell(CellReferenceIndex {
+                                    match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                         sheet: left.sheet,
                                         row,
                                         column,
@@ -180,37 +199,42 @@ impl Model {
         Ok(result)
     }
 
-    pub(crate) fn fn_subtotal(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_subtotal(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() < 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number(&args[0], cell) {
+        let value = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f.trunc() as i32,
             Err(s) => return s,
         };
         match value {
-            1 => self.subtotal_average(&args[1..], cell, SubTotalMode::Full),
-            2 => self.subtotal_count(&args[1..], cell, SubTotalMode::Full),
-            3 => self.subtotal_counta(&args[1..], cell, SubTotalMode::Full),
-            4 => self.subtotal_max(&args[1..], cell, SubTotalMode::Full),
-            5 => self.subtotal_min(&args[1..], cell, SubTotalMode::Full),
-            6 => self.subtotal_product(&args[1..], cell, SubTotalMode::Full),
-            7 => self.subtotal_stdevs(&args[1..], cell, SubTotalMode::Full),
-            8 => self.subtotal_stdevp(&args[1..], cell, SubTotalMode::Full),
-            9 => self.subtotal_sum(&args[1..], cell, SubTotalMode::Full),
-            10 => self.subtotal_vars(&args[1..], cell, SubTotalMode::Full),
-            11 => self.subtotal_varp(&args[1..], cell, SubTotalMode::Full),
-            101 => self.subtotal_average(&args[1..], cell, SubTotalMode::SkipHidden),
-            102 => self.subtotal_count(&args[1..], cell, SubTotalMode::SkipHidden),
-            103 => self.subtotal_counta(&args[1..], cell, SubTotalMode::SkipHidden),
-            104 => self.subtotal_max(&args[1..], cell, SubTotalMode::SkipHidden),
-            105 => self.subtotal_min(&args[1..], cell, SubTotalMode::SkipHidden),
-            106 => self.subtotal_product(&args[1..], cell, SubTotalMode::SkipHidden),
-            107 => self.subtotal_stdevs(&args[1..], cell, SubTotalMode::SkipHidden),
-            108 => self.subtotal_stdevp(&args[1..], cell, SubTotalMode::SkipHidden),
-            109 => self.subtotal_sum(&args[1..], cell, SubTotalMode::SkipHidden),
-            110 => self.subtotal_vars(&args[1..], cell, SubTotalMode::Full),
-            111 => self.subtotal_varp(&args[1..], cell, SubTotalMode::Full),
+            1 => Model::subtotal_average(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            2 => Model::subtotal_count(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            3 => Model::subtotal_counta(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            4 => Model::subtotal_max(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            5 => Model::subtotal_min(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            6 => Model::subtotal_product(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            7 => Model::subtotal_stdevs(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            8 => Model::subtotal_stdevp(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            9 => Model::subtotal_sum(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            10 => Model::subtotal_vars(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            11 => Model::subtotal_varp(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            101 => Model::subtotal_average(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            102 => Model::subtotal_count(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            103 => Model::subtotal_counta(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            104 => Model::subtotal_max(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            105 => Model::subtotal_min(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            106 => Model::subtotal_product(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            107 => Model::subtotal_stdevs(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            108 => Model::subtotal_stdevp(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            109 => Model::subtotal_sum(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::SkipHidden),
+            110 => Model::subtotal_vars(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
+            111 => Model::subtotal_varp(workbook, cells, parsed_formulas, language, &args[1..], cell, SubTotalMode::Full),
             _ => CalcResult::new_error(
                 Error::VALUE,
                 cell,
@@ -220,12 +244,15 @@ impl Model {
     }
 
     fn subtotal_vars(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -252,12 +279,15 @@ impl Model {
     }
 
     fn subtotal_varp(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -283,12 +313,15 @@ impl Model {
     }
 
     fn subtotal_stdevs(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -315,12 +348,15 @@ impl Model {
     }
 
     fn subtotal_stdevp(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -346,7 +382,10 @@ impl Model {
     }
 
     fn subtotal_counta(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
@@ -361,7 +400,7 @@ impl Model {
                     // skip
                 }
                 _ => {
-                    match self.evaluate_node_with_reference(arg, cell) {
+                    match Model::evaluate_node_with_reference(workbook, cells, parsed_formulas, language, arg, cell) {
                         CalcResult::EmptyCell | CalcResult::EmptyArg => {
                             // skip
                         }
@@ -380,7 +419,7 @@ impl Model {
                             let column2 = right.column;
 
                             for row in row1..=row2 {
-                                let cell_status = self.cell_hidden_status(left.sheet, row, column1);
+                                let cell_status = Model::cell_hidden_status(workbook, cells, parsed_formulas, language, left.sheet, row, column1);
                                 if cell_status == CellTableStatus::Filtered {
                                     continue;
                                 }
@@ -390,10 +429,10 @@ impl Model {
                                     continue;
                                 }
                                 for column in column1..=column2 {
-                                    if self.cell_is_subtotal(left.sheet, row, column) {
+                                    if Model::cell_is_subtotal(workbook, cells, parsed_formulas, language, left.sheet, row, column) {
                                         continue;
                                     }
-                                    match self.evaluate_cell(CellReferenceIndex {
+                                    match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                         sheet: left.sheet,
                                         row,
                                         column,
@@ -418,7 +457,10 @@ impl Model {
     }
 
     fn subtotal_count(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
@@ -433,7 +475,7 @@ impl Model {
                     // skip
                 }
                 _ => {
-                    match self.evaluate_node_with_reference(arg, cell) {
+                    match Model::evaluate_node_with_reference(workbook, cells, parsed_formulas, language, arg, cell) {
                         CalcResult::Range { left, right } => {
                             if left.sheet != right.sheet {
                                 return CalcResult::new_error(
@@ -449,7 +491,7 @@ impl Model {
                             let column2 = right.column;
 
                             for row in row1..=row2 {
-                                let cell_status = self.cell_hidden_status(left.sheet, row, column1);
+                                let cell_status = Model::cell_hidden_status(workbook, cells, parsed_formulas, language, left.sheet, row, column1);
                                 if cell_status == CellTableStatus::Filtered {
                                     continue;
                                 }
@@ -459,11 +501,11 @@ impl Model {
                                     continue;
                                 }
                                 for column in column1..=column2 {
-                                    if self.cell_is_subtotal(left.sheet, row, column) {
+                                    if Model::cell_is_subtotal(workbook, cells, parsed_formulas, language, left.sheet, row, column) {
                                         continue;
                                     }
                                     if let CalcResult::Number(_) =
-                                        self.evaluate_cell(CellReferenceIndex {
+                                        Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                             sheet: left.sheet,
                                             row,
                                             column,
@@ -485,12 +527,15 @@ impl Model {
     }
 
     fn subtotal_average(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -510,12 +555,15 @@ impl Model {
     }
 
     fn subtotal_sum(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -527,12 +575,15 @@ impl Model {
     }
 
     fn subtotal_product(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -544,12 +595,15 @@ impl Model {
     }
 
     fn subtotal_max(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -564,12 +618,15 @@ impl Model {
     }
 
     fn subtotal_min(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         args: &[Node],
         cell: CellReferenceIndex,
         mode: SubTotalMode,
     ) -> CalcResult {
-        let values = match self.subtotal_get_values(args, cell, mode) {
+        let values = match Model::subtotal_get_values(workbook, cells, parsed_formulas, language, args, cell, mode) {
             Ok(s) => s,
             Err(s) => return s,
         };

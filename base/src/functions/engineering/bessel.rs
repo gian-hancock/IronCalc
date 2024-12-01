@@ -1,7 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::Model,
+    calc_result::CalcResult, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, language::Language, model::{CellState, Model}, types::Workbook
 };
 
 use super::transcendental::{bessel_i, bessel_j, bessel_k, bessel_y, erf};
@@ -11,15 +11,20 @@ use super::transcendental::{bessel_i, bessel_j, bessel_k, bessel_y, erf};
 // EXCEL_BESSEL(x, n) => bessel(n, x)
 
 impl Model {
-    pub(crate) fn fn_besseli(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_besseli(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let n = match self.get_number_no_bools(&args[1], cell) {
+        let n = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -34,15 +39,20 @@ impl Model {
         }
         CalcResult::Number(result)
     }
-    pub(crate) fn fn_besselj(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_besselj(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let n = match self.get_number_no_bools(&args[1], cell) {
+        let n = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -66,15 +76,20 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn fn_besselk(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_besselk(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let n = match self.get_number_no_bools(&args[1], cell) {
+        let n = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -90,15 +105,20 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn fn_bessely(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bessely(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let n = match self.get_number_no_bools(&args[1], cell) {
+        let n = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -122,16 +142,21 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn fn_erf(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_erf(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         if args.len() == 2 {
-            let y = match self.get_number_no_bools(&args[1], cell) {
+            let y = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             };
@@ -141,33 +166,48 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_erfprecise(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_erfprecise(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         };
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         CalcResult::Number(erf(x))
     }
 
-    pub(crate) fn fn_erfc(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_erfc(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         };
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         CalcResult::Number(1.0 - erf(x))
     }
 
-    pub(crate) fn fn_erfcprecise(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_erfcprecise(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         };
-        let x = match self.get_number_no_bools(&args[0], cell) {
+        let x = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };

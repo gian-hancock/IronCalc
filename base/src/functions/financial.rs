@@ -1,14 +1,12 @@
+use std::collections::HashMap;
+
 use chrono::Datelike;
 
 use crate::{
-    calc_result::CalcResult,
-    constants::{LAST_COLUMN, LAST_ROW},
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    formatter::dates::from_excel_date,
-    model::Model,
+    calc_result::CalcResult, constants::{LAST_COLUMN, LAST_ROW}, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, formatter::dates::from_excel_date, language::Language, model::Model, types::Workbook
 };
 
-use super::financial_util::{compute_irr, compute_npv, compute_rate, compute_xirr, compute_xnpv};
+use super::{financial_util::{compute_irr, compute_npv, compute_rate, compute_xirr, compute_xnpv}, CellState};
 
 // See:
 // https://github.com/apache/openoffice/blob/c014b5f2b55cff8d4b0c952d5c16d62ecde09ca1/main/scaddins/source/analysis/financial.cxx
@@ -197,12 +195,15 @@ impl Model {
     // FIXME: These three functions (get_array_of_numbers..) need to be refactored
     // They are really similar expect for small issues
     fn get_array_of_numbers(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         arg: &Node,
         cell: &CellReferenceIndex,
     ) -> Result<Vec<f64>, CalcResult> {
         let mut values = Vec::new();
-        match self.evaluate_node_in_context(arg, *cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, *cell) {
             CalcResult::Number(value) => values.push(value),
             CalcResult::Range { left, right } => {
                 if left.sheet != right.sheet {
@@ -217,16 +218,14 @@ impl Model {
                 let column1 = left.column;
                 let mut column2 = right.column;
                 if row1 == 1 && row2 == LAST_ROW {
-                    row2 = self
-                        .workbook
+                    row2 = workbook
                         .worksheet(left.sheet)
                         .expect("Sheet expected during evaluation.")
                         .dimension()
                         .max_row;
                 }
                 if column1 == 1 && column2 == LAST_COLUMN {
-                    column2 = self
-                        .workbook
+                    column2 = workbook
                         .worksheet(left.sheet)
                         .expect("Sheet expected during evaluation.")
                         .dimension()
@@ -234,7 +233,7 @@ impl Model {
                 }
                 for row in row1..row2 + 1 {
                     for column in column1..(column2 + 1) {
-                        match self.evaluate_cell(CellReferenceIndex {
+                        match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                             sheet: left.sheet,
                             row,
                             column,
@@ -259,13 +258,16 @@ impl Model {
     }
 
     fn get_array_of_numbers_xpnv(
-        &mut self,
-        arg: &Node,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         cell: &CellReferenceIndex,
+        arg: &Node,
         error: Error,
     ) -> Result<Vec<f64>, CalcResult> {
         let mut values = Vec::new();
-        match self.evaluate_node_in_context(arg, *cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, *cell) {
             CalcResult::Number(value) => values.push(value),
             CalcResult::Range { left, right } => {
                 if left.sheet != right.sheet {
@@ -280,16 +282,14 @@ impl Model {
                 let column1 = left.column;
                 let mut column2 = right.column;
                 if row1 == 1 && row2 == LAST_ROW {
-                    row2 = self
-                        .workbook
+                    row2 = workbook
                         .worksheet(left.sheet)
                         .expect("Sheet expected during evaluation.")
                         .dimension()
                         .max_row;
                 }
                 if column1 == 1 && column2 == LAST_COLUMN {
-                    column2 = self
-                        .workbook
+                    column2 = workbook
                         .worksheet(left.sheet)
                         .expect("Sheet expected during evaluation.")
                         .dimension()
@@ -297,7 +297,7 @@ impl Model {
                 }
                 for row in row1..row2 + 1 {
                     for column in column1..(column2 + 1) {
-                        match self.evaluate_cell(CellReferenceIndex {
+                        match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                             sheet: left.sheet,
                             row,
                             column,
@@ -337,12 +337,15 @@ impl Model {
     }
 
     fn get_array_of_numbers_xirr(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         arg: &Node,
         cell: &CellReferenceIndex,
     ) -> Result<Vec<f64>, CalcResult> {
         let mut values = Vec::new();
-        match self.evaluate_node_in_context(arg, *cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, *cell) {
             CalcResult::Range { left, right } => {
                 if left.sheet != right.sheet {
                     return Err(CalcResult::new_error(
@@ -356,16 +359,14 @@ impl Model {
                 let column1 = left.column;
                 let mut column2 = right.column;
                 if row1 == 1 && row2 == LAST_ROW {
-                    row2 = self
-                        .workbook
+                    row2 = workbook
                         .worksheet(left.sheet)
                         .expect("Sheet expected during evaluation.")
                         .dimension()
                         .max_row;
                 }
                 if column1 == 1 && column2 == LAST_COLUMN {
-                    column2 = self
-                        .workbook
+                    column2 = workbook
                         .worksheet(left.sheet)
                         .expect("Sheet expected during evaluation.")
                         .dimension()
@@ -373,7 +374,7 @@ impl Model {
                 }
                 for row in row1..row2 + 1 {
                     for column in column1..(column2 + 1) {
-                        match self.evaluate_cell(CellReferenceIndex {
+                        match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                             sheet: left.sheet,
                             row,
                             column,
@@ -407,28 +408,33 @@ impl Model {
     }
 
     /// PMT(rate, nper, pv, [fv], [type])
-    pub(crate) fn fn_pmt(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_pmt(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(3..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // number of periods
-        let nper = match self.get_number(&args[1], cell) {
+        let nper = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // present value
-        let pv = match self.get_number(&args[2], cell) {
+        let pv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // future_value
         let fv = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -436,7 +442,7 @@ impl Model {
             0.0
         };
         let period_start = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f != 0.0,
                 Err(s) => return s,
             }
@@ -455,28 +461,33 @@ impl Model {
     }
 
     // PV(rate, nper, pmt, [fv], [type])
-    pub(crate) fn fn_pv(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_pv(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(3..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // nper
-        let period_count = match self.get_number(&args[1], cell) {
+        let period_count = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // pmt
-        let payment = match self.get_number(&args[2], cell) {
+        let payment = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // fv
         let future_value = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -484,7 +495,7 @@ impl Model {
             0.0
         };
         let period_start = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f != 0.0,
                 Err(s) => return s,
             }
@@ -521,26 +532,31 @@ impl Model {
     }
 
     // RATE(nper, pmt, pv, [fv], [type], [guess])
-    pub(crate) fn fn_rate(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_rate(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(3..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let nper = match self.get_number(&args[0], cell) {
+        let nper = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pmt = match self.get_number(&args[1], cell) {
+        let pmt = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pv = match self.get_number(&args[2], cell) {
+        let pv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // fv
         let fv = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -548,7 +564,7 @@ impl Model {
             0.0
         };
         let annuity_type = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => i32::from(f != 0.0),
                 Err(s) => return s,
             }
@@ -558,7 +574,7 @@ impl Model {
         };
 
         let guess = if arg_count > 5 {
-            match self.get_number(&args[5], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[5], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -577,28 +593,33 @@ impl Model {
     }
 
     // NPER(rate,pmt,pv,[fv],[type])
-    pub(crate) fn fn_nper(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_nper(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(3..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // pmt
-        let payment = match self.get_number(&args[1], cell) {
+        let payment = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // pv
-        let present_value = match self.get_number(&args[2], cell) {
+        let present_value = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // fv
         let future_value = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -606,7 +627,7 @@ impl Model {
             0.0
         };
         let period_start = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f != 0.0,
                 Err(s) => return s,
             }
@@ -660,28 +681,33 @@ impl Model {
     }
 
     // FV(rate, nper, pmt, [pv], [type])
-    pub(crate) fn fn_fv(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_fv(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(3..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // number of periods
-        let nper = match self.get_number(&args[1], cell) {
+        let nper = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // payment
-        let pmt = match self.get_number(&args[2], cell) {
+        let pmt = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // present value
         let pv = if arg_count > 3 {
-            match self.get_number(&args[3], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -689,7 +715,7 @@ impl Model {
             0.0
         };
         let period_start = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f != 0.0,
                 Err(s) => return s,
             }
@@ -708,33 +734,38 @@ impl Model {
     }
 
     // IPMT(rate, per, nper, pv, [fv], [type])
-    pub(crate) fn fn_ipmt(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ipmt(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(4..=6).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // per
-        let period = match self.get_number(&args[1], cell) {
+        let period = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // nper
-        let period_count = match self.get_number(&args[2], cell) {
+        let period_count = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // pv
-        let present_value = match self.get_number(&args[3], cell) {
+        let present_value = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // fv
         let future_value = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -742,7 +773,7 @@ impl Model {
             0.0
         };
         let period_start = if arg_count > 5 {
-            match self.get_number(&args[5], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[5], cell) {
                 Ok(f) => f != 0.0,
                 Err(s) => return s,
             }
@@ -771,33 +802,38 @@ impl Model {
     }
 
     // PPMT(rate, per, nper, pv, [fv], [type])
-    pub(crate) fn fn_ppmt(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ppmt(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(4..=6).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // per
-        let period = match self.get_number(&args[1], cell) {
+        let period = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // nper
-        let period_count = match self.get_number(&args[2], cell) {
+        let period_count = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // pv
-        let present_value = match self.get_number(&args[3], cell) {
+        let present_value = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // fv
         let future_value = if arg_count > 4 {
-            match self.get_number(&args[4], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -805,7 +841,7 @@ impl Model {
             0.0
         };
         let period_start = if arg_count > 5 {
-            match self.get_number(&args[5], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[5], cell) {
                 Ok(f) => f != 0.0,
                 Err(s) => return s,
             }
@@ -836,18 +872,23 @@ impl Model {
 
     // NPV(rate, value1, [value2],...)
     // npv = Sum[value[i]/(1+rate)^i, {i, 1, n}]
-    pub(crate) fn fn_npv(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_npv(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if arg_count < 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         let mut values = Vec::new();
         for arg in &args[1..] {
-            match self.evaluate_node_in_context(arg, cell) {
+            match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, arg, cell) {
                 CalcResult::Number(value) => values.push(value),
                 CalcResult::Range { left, right } => {
                     if left.sheet != right.sheet {
@@ -862,16 +903,14 @@ impl Model {
                     let column1 = left.column;
                     let mut column2 = right.column;
                     if row1 == 1 && row2 == LAST_ROW {
-                        row2 = self
-                            .workbook
+                        row2 = workbook
                             .worksheet(left.sheet)
                             .expect("Sheet expected during evaluation.")
                             .dimension()
                             .max_row;
                     }
                     if column1 == 1 && column2 == LAST_COLUMN {
-                        column2 = self
-                            .workbook
+                        column2 = workbook
                             .worksheet(left.sheet)
                             .expect("Sheet expected during evaluation.")
                             .dimension()
@@ -879,7 +918,7 @@ impl Model {
                     }
                     for row in row1..row2 + 1 {
                         for column in column1..(column2 + 1) {
-                            match self.evaluate_cell(CellReferenceIndex {
+                            match Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -915,17 +954,22 @@ impl Model {
     // of payments (negative values) and income (positive values) that occur at regular periods
 
     // IRR(values, [guess])
-    pub(crate) fn fn_irr(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_irr(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if arg_count > 2 || arg_count == 0 {
             return CalcResult::new_args_number_error(cell);
         }
-        let values = match self.get_array_of_numbers(&args[0], &cell) {
+        let values = match Model::get_array_of_numbers(workbook, cells, parsed_formulas, language, &args[0], &cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         let guess = if arg_count == 2 {
-            match self.get_number(&args[1], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -943,20 +987,25 @@ impl Model {
     }
 
     // XNPV(rate, values, dates)
-    pub(crate) fn fn_xnpv(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_xnpv(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(2..=3).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let values = match self.get_array_of_numbers_xpnv(&args[1], &cell, Error::NUM) {
+        let values = match Model::get_array_of_numbers_xpnv(workbook, cells,parsed_formulas, language, &cell, &args[1], Error::NUM) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let dates = match self.get_array_of_numbers_xpnv(&args[2], &cell, Error::VALUE) {
+        let dates = match Model::get_array_of_numbers_xpnv(workbook, cells, parsed_formulas, language, &cell, &args[2], Error::VALUE) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -1005,21 +1054,26 @@ impl Model {
     }
 
     // XIRR(values, dates, [guess])
-    pub(crate) fn fn_xirr(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_xirr(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(2..=3).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let values = match self.get_array_of_numbers_xirr(&args[0], &cell) {
+        let values = match Model::get_array_of_numbers_xirr(workbook, cells, parsed_formulas, language, &args[0], &cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let dates = match self.get_array_of_numbers_xirr(&args[1], &cell) {
+        let dates = match Model::get_array_of_numbers_xirr(workbook, cells, parsed_formulas, language, &args[1], &cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         let guess = if arg_count == 3 {
-            match self.get_number(&args[2], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -1076,19 +1130,24 @@ impl Model {
     // $v_p$ the vector of positive values
     // $v_n$ the vector of negative values
     // and $y$ is dimension of $v$ - 1 (number of years)
-    pub(crate) fn fn_mirr(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_mirr(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let values = match self.get_array_of_numbers(&args[0], &cell) {
+        let values = match Model::get_array_of_numbers(workbook, cells, parsed_formulas, language, &args[0], &cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let finance_rate = match self.get_number(&args[1], cell) {
+        let finance_rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let reinvest_rate = match self.get_number(&args[2], cell) {
+        let reinvest_rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1168,23 +1227,28 @@ impl Model {
     // ISPMT(rate, per, nper, pv)
     // Formula is:
     // $$pv*rate*\left(\frac{per}{nper}-1\right)$$
-    pub(crate) fn fn_ispmt(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ispmt(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 4 {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let per = match self.get_number(&args[1], cell) {
+        let per = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let nper = match self.get_number(&args[2], cell) {
+        let nper = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pv = match self.get_number(&args[3], cell) {
+        let pv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1197,19 +1261,24 @@ impl Model {
     // RRI(nper, pv, fv)
     // Formula is
     // $$ \left(\frac{fv}{pv}\right)^{\frac{1}{nper}}-1  $$
-    pub(crate) fn fn_rri(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_rri(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let nper = match self.get_number(&args[0], cell) {
+        let nper = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pv = match self.get_number(&args[1], cell) {
+        let pv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let fv = match self.get_number(&args[2], cell) {
+        let fv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1234,19 +1303,24 @@ impl Model {
     // SLN(cost, salvage, life)
     // Formula is:
     // $$ \frac{cost-salvage}{life} $$
-    pub(crate) fn fn_sln(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_sln(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let cost = match self.get_number(&args[0], cell) {
+        let cost = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let salvage = match self.get_number(&args[1], cell) {
+        let salvage = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let life = match self.get_number(&args[2], cell) {
+        let life = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1261,23 +1335,28 @@ impl Model {
     // SYD(cost, salvage, life, per)
     // Formula is:
     // $$ \frac{(cost-salvage)*(life-per+1)*2}{life*(life+1)} $$
-    pub(crate) fn fn_syd(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_syd(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 4 {
             return CalcResult::new_args_number_error(cell);
         }
-        let cost = match self.get_number(&args[0], cell) {
+        let cost = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let salvage = match self.get_number(&args[1], cell) {
+        let salvage = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let life = match self.get_number(&args[2], cell) {
+        let life = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let per = match self.get_number(&args[3], cell) {
+        let per = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1298,15 +1377,20 @@ impl Model {
     // where:
     //   $r$ is the effective interest rate
     //   $n$ is the number of periods per year
-    pub(crate) fn fn_nominal(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_nominal(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let effect_rate = match self.get_number_no_bools(&args[0], cell) {
+        let effect_rate = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let npery = match self.get_number_no_bools(&args[1], cell) {
+        let npery = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f.floor(),
             Err(s) => return s,
         };
@@ -1330,15 +1414,20 @@ impl Model {
     // where:
     //   $r$ is the nominal interest rate
     //   $n$ is the number of periods per year
-    pub(crate) fn fn_effect(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_effect(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let nominal_rate = match self.get_number_no_bools(&args[0], cell) {
+        let nominal_rate = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let npery = match self.get_number_no_bools(&args[1], cell) {
+        let npery = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f.floor(),
             Err(s) => return s,
         };
@@ -1363,19 +1452,24 @@ impl Model {
     //   * $r$ is the interest rate per period
     //   * $pv$ is the present value of the investment
     //   * $fv$ is the desired future value of the investment
-    pub(crate) fn fn_pduration(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_pduration(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number(&args[0], cell) {
+        let rate = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pv = match self.get_number(&args[1], cell) {
+        let pv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let fv = match self.get_number(&args[2], cell) {
+        let fv = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1410,19 +1504,24 @@ impl Model {
     /// Together with the previous relation of $p$ and $v$ gives us a quadratic equation for $y$.
 
     // TBILLEQ(settlement, maturity, discount)
-    pub(crate) fn fn_tbilleq(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_tbilleq(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let settlement = match self.get_number_no_bools(&args[0], cell) {
+        let settlement = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let maturity = match self.get_number_no_bools(&args[1], cell) {
+        let maturity = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let discount = match self.get_number_no_bools(&args[2], cell) {
+        let discount = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1474,19 +1573,24 @@ impl Model {
     }
 
     // TBILLPRICE(settlement, maturity, discount)
-    pub(crate) fn fn_tbillprice(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_tbillprice(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let settlement = match self.get_number_no_bools(&args[0], cell) {
+        let settlement = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let maturity = match self.get_number_no_bools(&args[1], cell) {
+        let maturity = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let discount = match self.get_number_no_bools(&args[2], cell) {
+        let discount = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1524,19 +1628,24 @@ impl Model {
     }
 
     // TBILLYIELD(settlement, maturity, pr)
-    pub(crate) fn fn_tbillyield(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_tbillyield(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let settlement = match self.get_number_no_bools(&args[0], cell) {
+        let settlement = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let maturity = match self.get_number_no_bools(&args[1], cell) {
+        let maturity = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pr = match self.get_number_no_bools(&args[2], cell) {
+        let pr = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1567,15 +1676,20 @@ impl Model {
     }
 
     // DOLLARDE(fractional_dollar, fraction)
-    pub(crate) fn fn_dollarde(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_dollarde(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let fractional_dollar = match self.get_number_no_bools(&args[0], cell) {
+        let fractional_dollar = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let mut fraction = match self.get_number_no_bools(&args[1], cell) {
+        let mut fraction = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1596,15 +1710,20 @@ impl Model {
     }
 
     // DOLLARFR(decimal_dollar, fraction)
-    pub(crate) fn fn_dollarfr(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_dollarfr(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let decimal_dollar = match self.get_number_no_bools(&args[0], cell) {
+        let decimal_dollar = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let mut fraction = match self.get_number_no_bools(&args[1], cell) {
+        let mut fraction = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -1625,32 +1744,37 @@ impl Model {
     }
 
     // CUMIPMT(rate, nper, pv, start_period, end_period, type)
-    pub(crate) fn fn_cumipmt(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_cumipmt(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 6 {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number_no_bools(&args[0], cell) {
+        let rate = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let nper = match self.get_number_no_bools(&args[1], cell) {
+        let nper = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pv = match self.get_number_no_bools(&args[2], cell) {
+        let pv = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let start_period = match self.get_number_no_bools(&args[3], cell) {
+        let start_period = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f.ceil() as i32,
             Err(s) => return s,
         };
-        let end_period = match self.get_number_no_bools(&args[4], cell) {
+        let end_period = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[4], cell) {
             Ok(f) => f.trunc() as i32,
             Err(s) => return s,
         };
         // 0 at the end of the period, 1 at the beginning of the period
-        let period_type = match self.get_number_no_bools(&args[5], cell) {
+        let period_type = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[5], cell) {
             Ok(f) => {
                 if f == 0.0 {
                     false
@@ -1693,32 +1817,37 @@ impl Model {
     }
 
     // CUMPRINC(rate, nper, pv, start_period, end_period, type)
-    pub(crate) fn fn_cumprinc(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_cumprinc(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 6 {
             return CalcResult::new_args_number_error(cell);
         }
-        let rate = match self.get_number_no_bools(&args[0], cell) {
+        let rate = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let nper = match self.get_number_no_bools(&args[1], cell) {
+        let nper = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let pv = match self.get_number_no_bools(&args[2], cell) {
+        let pv = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let start_period = match self.get_number_no_bools(&args[3], cell) {
+        let start_period = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f.ceil() as i32,
             Err(s) => return s,
         };
-        let end_period = match self.get_number_no_bools(&args[4], cell) {
+        let end_period = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[4], cell) {
             Ok(f) => f.trunc() as i32,
             Err(s) => return s,
         };
         // 0 at the end of the period, 1 at the beginning of the period
-        let period_type = match self.get_number_no_bools(&args[5], cell) {
+        let period_type = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[5], cell) {
             Ok(f) => {
                 if f == 0.0 {
                     false
@@ -1761,30 +1890,35 @@ impl Model {
     }
 
     // DDB(cost, salvage, life, period, [factor])
-    pub(crate) fn fn_ddb(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ddb(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(4..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let cost = match self.get_number(&args[0], cell) {
+        let cost = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let salvage = match self.get_number(&args[1], cell) {
+        let salvage = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let life = match self.get_number(&args[2], cell) {
+        let life = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let period = match self.get_number(&args[3], cell) {
+        let period = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         // The rate at which the balance declines.
         let factor = if arg_count > 4 {
-            match self.get_number_no_bools(&args[4], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f,
                 Err(s) => return s,
             }
@@ -1815,29 +1949,34 @@ impl Model {
     }
 
     // DB(cost, salvage, life, period, [month])
-    pub(crate) fn fn_db(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_db(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let arg_count = args.len();
         if !(4..=5).contains(&arg_count) {
             return CalcResult::new_args_number_error(cell);
         }
-        let cost = match self.get_number(&args[0], cell) {
+        let cost = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let salvage = match self.get_number(&args[1], cell) {
+        let salvage = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let life = match self.get_number(&args[2], cell) {
+        let life = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let period = match self.get_number(&args[3], cell) {
+        let period = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         let month = if arg_count > 4 {
-            match self.get_number_no_bools(&args[4], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(f) => f.trunc(),
                 Err(s) => return s,
             }

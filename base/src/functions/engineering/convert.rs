@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::Model,
+    calc_result::CalcResult, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, language::Language, model::{CellState, Model}, types::Workbook
 };
 
 enum Temperature {
@@ -43,19 +41,24 @@ fn convert_temperature(
 
 impl Model {
     // CONVERT(number, from_unit, to_unit)
-    pub(crate) fn fn_convert(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_convert(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number(&args[0], cell) {
+        let value = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let from_unit = match self.get_string(&args[1], cell) {
+        let from_unit = match Model::get_string(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let to_unit = match self.get_string(&args[2], cell) {
+        let to_unit = match Model::get_string(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };

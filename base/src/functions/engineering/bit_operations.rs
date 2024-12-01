@@ -1,7 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::Model,
+    calc_result::CalcResult, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, language::Language, model::{CellState, Model}, types::Workbook
 };
 
 // 2^48-1
@@ -9,15 +9,20 @@ const MAX: f64 = 281474976710655.0;
 
 impl Model {
     // BITAND( number1, number2)
-    pub(crate) fn fn_bitand(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bitand(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let number1 = match self.get_number(&args[0], cell) {
+        let number1 = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let number2 = match self.get_number(&args[1], cell) {
+        let number2 = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -47,15 +52,20 @@ impl Model {
     }
 
     // BITOR(number1, number2)
-    pub(crate) fn fn_bitor(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bitor(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let number1 = match self.get_number(&args[0], cell) {
+        let number1 = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let number2 = match self.get_number(&args[1], cell) {
+        let number2 = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -85,15 +95,20 @@ impl Model {
     }
 
     // BITXOR(number1, number2)
-    pub(crate) fn fn_bitxor(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bitxor(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let number1 = match self.get_number(&args[0], cell) {
+        let number1 = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let number2 = match self.get_number(&args[1], cell) {
+        let number2 = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -123,15 +138,20 @@ impl Model {
     }
 
     // BITLSHIFT(number, shift_amount)
-    pub(crate) fn fn_bitlshift(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bitlshift(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let number = match self.get_number(&args[0], cell) {
+        let number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let shift = match self.get_number(&args[1], cell) {
+        let shift = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -177,15 +197,20 @@ impl Model {
     }
 
     // BITRSHIFT(number, shift_amount)
-    pub(crate) fn fn_bitrshift(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bitrshift(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let number = match self.get_number(&args[0], cell) {
+        let number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
-        let shift = match self.get_number(&args[1], cell) {
+        let shift = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };

@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::HashMap};
 
-use crate::{calc_result::CalcResult, expressions::types::CellReferenceIndex, model::Model};
+use crate::{calc_result::CalcResult, expressions::{parser::Node, types::CellReferenceIndex}, language::Language, model::{CellState, Model}, types::Workbook};
 
 use super::util::compare_values;
 
@@ -140,7 +140,10 @@ pub(crate) fn binary_search_descending_or_greater<T: Ord>(target: &T, array: &[T
 impl Model {
     /// Returns an array with the list of cell values in the range
     pub(crate) fn prepare_array(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         left: &CellReferenceIndex,
         right: &CellReferenceIndex,
         is_row_vector: bool,
@@ -161,7 +164,7 @@ impl Model {
                 column = left.column + index;
                 row = left.row;
             }
-            let value = self.evaluate_cell(CellReferenceIndex {
+            let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                 sheet: left.sheet,
                 row,
                 column,
@@ -173,13 +176,16 @@ impl Model {
 
     /// Old style binary search. Used in HLOOKUP, etc
     pub(crate) fn binary_search(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         target: &CalcResult,
         left: &CellReferenceIndex,
         right: &CellReferenceIndex,
         is_row_vector: bool,
     ) -> i32 {
-        let array = self.prepare_array(left, right, is_row_vector);
+        let array = Model::prepare_array(workbook, cells, parsed_formulas, language, left, right, is_row_vector);
         // We apply binary search leftmost for value in the range
         let mut l = 0;
         let mut r = array.len();

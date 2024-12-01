@@ -1,18 +1,28 @@
+use std::collections::HashMap;
+
 use crate::constants::{LAST_COLUMN, LAST_ROW};
 use crate::expressions::types::CellReferenceIndex;
+use crate::language::Language;
+use crate::types::Workbook;
 use crate::{
     calc_result::CalcResult, expressions::parser::Node, expressions::token::Error, model::Model,
     utils::ParsedReference,
 };
 
 use super::util::{compare_values, from_wildcard_to_regex, result_matches_regex, values_are_equal};
+use super::CellState;
 
 impl Model {
-    pub(crate) fn fn_index(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_index(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let row_num;
         let col_num;
         if args.len() == 3 {
-            row_num = match self.get_number(&args[1], cell) {
+            row_num = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => f,
                 Err(s) => {
                     return s;
@@ -25,7 +35,7 @@ impl Model {
                     message: "Argument must be >= 1".to_string(),
                 };
             }
-            col_num = match self.get_number(&args[2], cell) {
+            col_num = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(f) => f,
                 Err(s) => {
                     return s;
@@ -39,7 +49,7 @@ impl Model {
                 };
             }
         } else if args.len() == 2 {
-            row_num = match self.get_number(&args[1], cell) {
+            row_num = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => f,
                 Err(s) => {
                     return s;
@@ -56,7 +66,7 @@ impl Model {
         } else {
             return CalcResult::new_args_number_error(cell);
         }
-        match self.evaluate_node_in_context(&args[0], cell) {
+        match Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell) {
             CalcResult::Range { left, right } => {
                 let row;
                 let column;
@@ -86,7 +96,7 @@ impl Model {
                         message: "Wrong reference".to_string(),
                     };
                 }
-                self.evaluate_cell(CellReferenceIndex {
+                Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                     sheet: left.sheet,
                     row,
                     column,
@@ -111,11 +121,16 @@ impl Model {
     //                     The match_type argument specifies how Excel matches lookup_value
     //                     with values in lookup_array. The default value for this argument is 1.
     // NOTE: Please read the caveat above in binary search
-    pub(crate) fn fn_match(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_match(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 3 || args.len() < 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let target = self.evaluate_node_in_context(&args[0], cell);
+        let target = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if target.is_error() {
             return target;
         }
@@ -127,14 +142,14 @@ impl Model {
             };
         }
         let match_type = if args.len() == 3 {
-            match self.get_number(&args[2], cell) {
+            match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(v) => v as i32,
                 Err(s) => return s,
             }
         } else {
             1
         };
-        let match_range = self.evaluate_node_in_context(&args[1], cell);
+        let match_range = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
 
         match match_range {
             CalcResult::Range { left, right } => {
@@ -172,7 +187,7 @@ impl Model {
                                 column = left.column + m;
                                 row = left.row;
                             }
-                            let value = self.evaluate_cell(CellReferenceIndex {
+                            let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -236,7 +251,7 @@ impl Model {
                                 column = left.column + l;
                                 row = left.row;
                             }
-                            let value = self.evaluate_cell(CellReferenceIndex {
+                            let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -266,7 +281,7 @@ impl Model {
                                 message: "Argument must be a vector".to_string(),
                             };
                         }
-                        let l = self.binary_search(&target, &left, &right, is_row_vector);
+                        let l = Model::binary_search(workbook, cells, parsed_formulas, language, &target, &left, &right, is_row_vector);
                         if l == -2 {
                             return CalcResult::Error {
                                 error: Error::NA,
@@ -292,32 +307,37 @@ impl Model {
     /// We look for `lookup_value` in the first row of table array
     /// We return the value in row `row_index` of the same column in `table_array`
     /// `is_sorted` is true by default and assumes that values in first row are ordered
-    pub(crate) fn fn_hlookup(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_hlookup(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 4 || args.len() < 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let lookup_value = self.evaluate_node_in_context(&args[0], cell);
+        let lookup_value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if lookup_value.is_error() {
             return lookup_value;
         }
-        let row_index = match self.get_number(&args[2], cell) {
+        let row_index = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(v) => v.floor() as i32,
             Err(s) => return s,
         };
         let is_sorted = if args.len() == 4 {
-            match self.get_boolean(&args[3], cell) {
+            match Model::get_boolean(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(v) => v,
                 Err(s) => return s,
             }
         } else {
             true
         };
-        let range = self.evaluate_node_in_context(&args[1], cell);
+        let range = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
         match range {
             CalcResult::Range { left, right } => {
                 if is_sorted {
                     // This assumes the values in row are in order
-                    let l = self.binary_search(&lookup_value, &left, &right, false);
+                    let l = Model::binary_search(workbook, cells, parsed_formulas, language, &lookup_value, &left, &right, false);
                     if l == -2 {
                         return CalcResult::Error {
                             error: Error::NA,
@@ -334,7 +354,7 @@ impl Model {
                             message: "Invalid reference".to_string(),
                         };
                     }
-                    self.evaluate_cell(CellReferenceIndex {
+                    Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                         sheet: left.sheet,
                         row,
                         column,
@@ -361,13 +381,13 @@ impl Model {
                             Box::new(move |x| compare_values(x, &lookup_value) == 0)
                         };
                     for l in 0..n {
-                        let value = self.evaluate_cell(CellReferenceIndex {
+                        let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                             sheet: left.sheet,
                             row: left.row,
                             column: left.column + l,
                         });
                         if result_matches(&value) {
-                            return self.evaluate_cell(CellReferenceIndex {
+                            return Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column: left.column + l,
@@ -399,32 +419,37 @@ impl Model {
     /// We look for `lookup_value` in the first column of table array
     /// We return the value in column `column_index` of the same row in `table_array`
     /// `is_sorted` is true by default and assumes that values in first column are ordered
-    pub(crate) fn fn_vlookup(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_vlookup(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 4 || args.len() < 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let lookup_value = self.evaluate_node_in_context(&args[0], cell);
+        let lookup_value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if lookup_value.is_error() {
             return lookup_value;
         }
-        let column_index = match self.get_number(&args[2], cell) {
+        let column_index = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(v) => v.floor() as i32,
             Err(s) => return s,
         };
         let is_sorted = if args.len() == 4 {
-            match self.get_boolean(&args[3], cell) {
+            match Model::get_boolean(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(v) => v,
                 Err(s) => return s,
             }
         } else {
             true
         };
-        let range = self.evaluate_node_in_context(&args[1], cell);
+        let range = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
         match range {
             CalcResult::Range { left, right } => {
                 if is_sorted {
                     // This assumes the values in column are in order
-                    let l = self.binary_search(&lookup_value, &left, &right, true);
+                    let l = Model::binary_search(workbook, cells, parsed_formulas, language, &lookup_value, &left, &right, true);
                     if l == -2 {
                         return CalcResult::Error {
                             error: Error::NA,
@@ -441,7 +466,7 @@ impl Model {
                             message: "Invalid reference".to_string(),
                         };
                     }
-                    self.evaluate_cell(CellReferenceIndex {
+                    Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                         sheet: left.sheet,
                         row,
                         column,
@@ -468,13 +493,13 @@ impl Model {
                             Box::new(move |x| compare_values(x, &lookup_value) == 0)
                         };
                     for l in 0..n {
-                        let value = self.evaluate_cell(CellReferenceIndex {
+                        let value = Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                             sheet: left.sheet,
                             row: left.row + l,
                             column: left.column,
                         });
                         if result_matches(&value) {
-                            return self.evaluate_cell(CellReferenceIndex {
+                            return Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row: left.row + l,
                                 column,
@@ -510,15 +535,20 @@ impl Model {
     // TODO: Implement the other form of INDEX:
     // INDEX(reference, row_num, [column_num], [area_num])
     // NOTE: Please read the caveat above in binary search
-    pub(crate) fn fn_lookup(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_lookup(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 3 || args.len() < 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let target = self.evaluate_node_in_context(&args[0], cell);
+        let target = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[0], cell);
         if target.is_error() {
             return target;
         }
-        let value = self.evaluate_node_in_context(&args[1], cell);
+        let value = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[1], cell);
         match value {
             CalcResult::Range { left, right } => {
                 let is_row_vector;
@@ -534,7 +564,7 @@ impl Model {
                         message: "Second argument must be a vector".to_string(),
                     };
                 }
-                let l = self.binary_search(&target, &left, &right, is_row_vector);
+                let l = Model::binary_search(workbook, cells, parsed_formulas, language, &target, &left, &right, is_row_vector);
                 if l == -2 {
                     return CalcResult::Error {
                         error: Error::NA,
@@ -544,7 +574,7 @@ impl Model {
                 }
 
                 if args.len() == 3 {
-                    let target_range = self.evaluate_node_in_context(&args[2], cell);
+                    let target_range = Model::evaluate_node_in_context(workbook, cells, parsed_formulas, language, &args[2], cell);
                     match target_range {
                         CalcResult::Range {
                             left: l1,
@@ -559,7 +589,7 @@ impl Model {
                                 column = l1.column + l;
                                 row = l1.row;
                             }
-                            self.evaluate_cell(CellReferenceIndex {
+                            Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                                 sheet: left.sheet,
                                 row,
                                 column,
@@ -582,7 +612,7 @@ impl Model {
                         column = left.column + l;
                         row = left.row;
                     }
-                    self.evaluate_cell(CellReferenceIndex {
+                    Model::evaluate_cell(workbook, cells, parsed_formulas, language, CellReferenceIndex {
                         sheet: left.sheet,
                         row,
                         column,
@@ -601,14 +631,19 @@ impl Model {
     // ROW([reference])
     // If reference is not present returns the row of the present cell.
     // Otherwise returns the row number of reference
-    pub(crate) fn fn_row(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_row(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 1 {
             return CalcResult::new_args_number_error(cell);
         }
         if args.is_empty() {
             return CalcResult::Number(cell.row as f64);
         }
-        match self.get_reference(&args[0], cell) {
+        match Model::get_reference(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => CalcResult::Number(c.left.row as f64),
             Err(s) => s,
         }
@@ -616,11 +651,16 @@ impl Model {
 
     // ROWS(range)
     // Returns the number of rows in range
-    pub(crate) fn fn_rows(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_rows(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        match self.get_reference(&args[0], cell) {
+        match Model::get_reference(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => CalcResult::Number((c.right.row - c.left.row + 1) as f64),
             Err(s) => s,
         }
@@ -629,7 +669,12 @@ impl Model {
     // COLUMN([reference])
     // If reference is not present returns the column of the present cell.
     // Otherwise returns the column number of reference
-    pub(crate) fn fn_column(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_column(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 1 {
             return CalcResult::new_args_number_error(cell);
         }
@@ -637,7 +682,7 @@ impl Model {
             return CalcResult::Number(cell.column as f64);
         }
 
-        match self.get_reference(&args[0], cell) {
+        match Model::get_reference(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(range) => CalcResult::Number(range.left.column as f64),
             Err(s) => s,
         }
@@ -645,12 +690,17 @@ impl Model {
 
     /// CHOOSE(index_num, value1, [value2], ...)
     /// Uses index_num to return a value from the list of value arguments.
-    pub(crate) fn fn_choose(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_choose(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() < 2 {
             return CalcResult::new_args_number_error(cell);
         }
 
-        let index_num = match self.get_number(&args[0], cell) {
+        let index_num = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(index_num) => index_num as usize,
             Err(calc_err) => return calc_err,
         };
@@ -663,16 +713,21 @@ impl Model {
             };
         }
 
-        self.evaluate_node_with_reference(&args[index_num], cell)
+        Model::evaluate_node_with_reference(workbook, cells, parsed_formulas, language, &args[index_num], cell)
     }
 
     // COLUMNS(range)
     // Returns the number of columns in range
-    pub(crate) fn fn_columns(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_columns(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        match self.get_reference(&args[0], cell) {
+        match Model::get_reference(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => CalcResult::Number((c.right.column - c.left.column + 1) as f64),
             Err(s) => s,
         }
@@ -680,11 +735,16 @@ impl Model {
 
     // INDIRECT(ref_tex)
     // Returns the reference specified by 'ref_text'
-    pub(crate) fn fn_indirect(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_indirect(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() > 2 || args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = self.get_string(&args[0], cell);
+        let value = Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell);
         match value {
             Ok(s) => {
                 if args.len() == 2 {
@@ -699,7 +759,7 @@ impl Model {
                     Some(cell.sheet),
                     &s,
                     &self.locale,
-                    |name| Model::get_sheet_index_by_name(&self.workbook, name),
+                    |name| Model::get_sheet_index_by_name(workbook, name),
                 );
 
                 let parsed_reference = match parsed_reference {
@@ -729,16 +789,21 @@ impl Model {
     // Returns a reference to a range that is a specified number of rows and columns from a cell or range of cells.
     // The reference that is returned can be a single cell or a range of cells.
     // You can specify the number of rows and the number of columns to be returned.
-    pub(crate) fn fn_offset(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_offset(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let l = args.len();
         if !(3..=5).contains(&l) {
             return CalcResult::new_args_number_error(cell);
         }
-        let reference = match self.get_reference(&args[0], cell) {
+        let reference = match Model::get_reference(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => c,
             Err(s) => return s,
         };
-        let rows = match self.get_number(&args[1], cell) {
+        let rows = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(c) => {
                 if c < 0.0 {
                     c.ceil() as i32
@@ -748,7 +813,7 @@ impl Model {
             }
             Err(s) => return s,
         };
-        let cols = match self.get_number(&args[2], cell) {
+        let cols = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(c) => {
                 if c < 0.0 {
                     c.ceil() as i32
@@ -763,7 +828,7 @@ impl Model {
         let width;
         let height;
         if l == 4 {
-            height = match self.get_number(&args[3], cell) {
+            height = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(c) => {
                     if c < 1.0 {
                         c.ceil() as i32 - 1
@@ -775,7 +840,7 @@ impl Model {
             };
             width = reference.right.column - reference.left.column;
         } else if l == 5 {
-            height = match self.get_number(&args[3], cell) {
+            height = match Model::get_number(workbook, cells, parsed_formulas, language, &args[3], cell) {
                 Ok(c) => {
                     if c < 1.0 {
                         c.ceil() as i32 - 1
@@ -785,7 +850,7 @@ impl Model {
                 }
                 Err(s) => return s,
             };
-            width = match self.get_number(&args[4], cell) {
+            width = match Model::get_number(workbook, cells, parsed_formulas, language, &args[4], cell) {
                 Ok(c) => {
                     if c < 1.0 {
                         c.ceil() as i32 - 1

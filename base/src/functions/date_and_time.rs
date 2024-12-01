@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Months;
@@ -5,19 +7,27 @@ use chrono::Timelike;
 
 use crate::expressions::types::CellReferenceIndex;
 use crate::formatter::dates::date_to_serial_number;
+use crate::language::Language;
 use crate::model::get_milliseconds_since_epoch;
+use crate::model::CellState;
+use crate::types::Workbook;
 use crate::{
     calc_result::CalcResult, constants::EXCEL_DATE_BASE, expressions::parser::Node,
     expressions::token::Error, formatter::dates::from_excel_date, model::Model,
 };
 
 impl Model {
-    pub(crate) fn fn_day(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_day(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let serial_number = match self.get_number(&args[0], cell) {
+        let serial_number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => {
                 let t = c.floor() as i64;
                 if t < 0 {
@@ -36,12 +46,17 @@ impl Model {
         CalcResult::Number(day)
     }
 
-    pub(crate) fn fn_month(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_month(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let serial_number = match self.get_number(&args[0], cell) {
+        let serial_number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => {
                 let t = c.floor() as i64;
                 if t < 0 {
@@ -60,12 +75,17 @@ impl Model {
         CalcResult::Number(month)
     }
 
-    pub(crate) fn fn_eomonth(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_eomonth(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let serial_number = match self.get_number(&args[0], cell) {
+        let serial_number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => {
                 let t = c.floor() as i64;
                 if t < 0 {
@@ -80,7 +100,7 @@ impl Model {
             Err(s) => return s,
         };
 
-        let months = match self.get_number_no_bools(&args[1], cell) {
+        let months = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(c) => {
                 let t = c.trunc();
                 t as i32
@@ -115,12 +135,17 @@ impl Model {
     }
 
     // year, month, day
-    pub(crate) fn fn_date(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_date(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 3 {
             return CalcResult::new_args_number_error(cell);
         }
-        let year = match self.get_number(&args[0], cell) {
+        let year = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => {
                 let t = c.floor() as i32;
                 if t < 0 {
@@ -134,7 +159,7 @@ impl Model {
             }
             Err(s) => return s,
         };
-        let month = match self.get_number(&args[1], cell) {
+        let month = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(c) => {
                 let t = c.floor();
                 if t < 0.0 {
@@ -148,7 +173,7 @@ impl Model {
             }
             Err(s) => return s,
         };
-        let day = match self.get_number(&args[2], cell) {
+        let day = match Model::get_number(workbook, cells, parsed_formulas, language, &args[2], cell) {
             Ok(c) => {
                 let t = c.floor();
                 if t < 0.0 {
@@ -172,12 +197,17 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_year(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_year(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let serial_number = match self.get_number(&args[0], cell) {
+        let serial_number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => {
                 let t = c.floor() as i64;
                 if t < 0 {
@@ -197,12 +227,17 @@ impl Model {
     }
 
     // date, months
-    pub(crate) fn fn_edate(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_edate(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let serial_number = match self.get_number(&args[0], cell) {
+        let serial_number = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(c) => {
                 let t = c.floor() as i64;
                 if t < 0 {
@@ -218,7 +253,7 @@ impl Model {
             Err(s) => return s,
         };
 
-        let months = match self.get_number(&args[1], cell) {
+        let months = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(c) => {
                 let t = c.trunc();
                 t as i32
@@ -245,7 +280,12 @@ impl Model {
         CalcResult::Number(serial_number as f64)
     }
 
-    pub(crate) fn fn_today(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_today(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 0 {
             return CalcResult::Error {
@@ -275,7 +315,12 @@ impl Model {
         CalcResult::Number(days_from_1900 as f64)
     }
 
-    pub(crate) fn fn_now(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_now(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count != 0 {
             return CalcResult::Error {

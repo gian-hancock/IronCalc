@@ -1,15 +1,12 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use crate::{
-    calc_result::CalcResult,
-    expressions::{
+    calc_result::CalcResult, expressions::{
         lexer::util::get_tokens,
         parser::Node,
         token::{Error, OpSum, TokenType},
         types::CellReferenceIndex,
-    },
-    model::Model,
-    number_format::to_precision,
+    }, language::Language, model::{CellState, Model}, number_format::to_precision, types::Workbook
 };
 
 /// This implements all functions with complex arguments in the standard
@@ -184,11 +181,14 @@ fn parse_complex_number(s: &str) -> Result<(f64, f64, Suffix), String> {
 
 impl Model {
     fn get_complex_number(
-        &mut self,
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
         node: &Node,
         cell: CellReferenceIndex,
     ) -> Result<(f64, f64, Suffix), CalcResult> {
-        let value = match self.get_string(node, cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, node, cell) {
             Ok(s) => s,
             Err(s) => return Err(s),
         };
@@ -201,20 +201,25 @@ impl Model {
         }
     }
     // COMPLEX(real_num, i_num, [suffix])
-    pub(crate) fn fn_complex(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_complex(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(2..=3).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let x = match self.get_number(&args[0], cell) {
+        let x = match Model::get_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
-        let y = match self.get_number(&args[1], cell) {
+        let y = match Model::get_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let suffix = if args.len() == 3 {
-            match self.get_string(&args[2], cell) {
+            match Model::get_string(workbook, cells, parsed_formulas, language, &args[2], cell) {
                 Ok(s) => {
                     if s == "i" || s.is_empty() {
                         Suffix::I
@@ -238,32 +243,47 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imabs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imabs(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, _) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, _) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         CalcResult::Number(f64::sqrt(x * x + y * y))
     }
 
-    pub(crate) fn fn_imaginary(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imaginary(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (_, y, _) = match self.get_complex_number(&args[0], cell) {
+        let (_, y, _) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         CalcResult::Number(y)
     }
-    pub(crate) fn fn_imargument(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imargument(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, _) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, _) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -273,22 +293,32 @@ impl Model {
         let angle = f64::atan2(y, x);
         CalcResult::Number(angle)
     }
-    pub(crate) fn fn_imconjugate(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imconjugate(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         let complex = Complex { x, y: -y, suffix };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imcos(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imcos(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -304,11 +334,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imcosh(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imcosh(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -324,11 +359,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imcot(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imcot(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -368,11 +408,16 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imcsc(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imcsc(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -396,11 +441,16 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imcsch(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imcsch(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -424,15 +474,20 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imdiv(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imdiv(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x1, y1, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x1, y1, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let (x2, y2, suffix2) = match self.get_complex_number(&args[1], cell) {
+        let (x2, y2, suffix2) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -451,11 +506,16 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imexp(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imexp(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -467,11 +527,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imln(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imln(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -486,11 +551,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imlog10(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imlog10(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -505,11 +575,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imlog2(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imlog2(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -528,17 +603,22 @@ impl Model {
     // IMPOWER(imnumber, power)
     // If $(r, \theta)$ is the polar representation the formula is:
     //  $$ x = r^n*\cos(n\dot\theta), y = r^n*\csin(n\dot\theta) $
-    pub(crate) fn fn_impower(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_impower(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
 
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
 
-        let n = match self.get_number_no_bools(&args[1], cell) {
+        let n = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -571,17 +651,22 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_improduct(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_improduct(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
 
-        let (x1, y1, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x1, y1, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
 
-        let (x2, y2, suffix2) = match self.get_complex_number(&args[1], cell) {
+        let (x2, y2, suffix2) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -596,21 +681,31 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imreal(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imreal(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, _, _) = match self.get_complex_number(&args[0], cell) {
+        let (x, _, _) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
         CalcResult::Number(x)
     }
-    pub(crate) fn fn_imsec(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsec(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -629,11 +724,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imsech(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsech(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -652,11 +752,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imsin(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsin(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -668,11 +773,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imsinh(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsinh(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -684,11 +794,16 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imsqrt(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsqrt(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -703,15 +818,20 @@ impl Model {
         };
         CalcResult::String(complex.to_string())
     }
-    pub(crate) fn fn_imsub(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsub(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x1, y1, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x1, y1, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let (x2, y2, suffix2) = match self.get_complex_number(&args[1], cell) {
+        let (x2, y2, suffix2) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -726,15 +846,20 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imsum(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imsum(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 2 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x1, y1, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x1, y1, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
-        let (x2, y2, suffix2) = match self.get_complex_number(&args[1], cell) {
+        let (x2, y2, suffix2) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[1], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };
@@ -749,11 +874,16 @@ impl Model {
         CalcResult::String(complex.to_string())
     }
 
-    pub(crate) fn fn_imtan(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_imtan(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let (x, y, suffix) = match self.get_complex_number(&args[0], cell) {
+        let (x, y, suffix) = match Model::get_complex_number(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(error) => return error,
         };

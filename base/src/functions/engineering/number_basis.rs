@@ -1,7 +1,7 @@
+use std::collections::HashMap;
+
 use crate::{
-    calc_result::CalcResult,
-    expressions::{parser::Node, token::Error, types::CellReferenceIndex},
-    model::Model,
+    calc_result::CalcResult, expressions::{parser::Node, token::Error, types::CellReferenceIndex}, language::Language, model::{CellState, Model}, types::Workbook
 };
 
 // 8_i64.pow(10);
@@ -33,11 +33,16 @@ fn from_binary_to_decimal(value: f64) -> Result<i64, String> {
 
 impl Model {
     // BIN2DEC(number)
-    pub(crate) fn fn_bin2dec(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bin2dec(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.len() != 1 {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number_no_bools(&args[0], cell) {
+        let value = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
@@ -48,16 +53,21 @@ impl Model {
     }
 
     // BIN2HEX(number, [places])
-    pub(crate) fn fn_bin2hex(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bin2hex(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number_no_bools(&args[0], cell) {
+        let value = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -92,16 +102,21 @@ impl Model {
     }
 
     // BIN2OCT(number, [places])
-    pub(crate) fn fn_bin2oct(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_bin2oct(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_number_no_bools(&args[0], cell) {
+        let value = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -135,16 +150,21 @@ impl Model {
         }
     }
 
-    pub(crate) fn fn_dec2bin(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_dec2bin(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value_raw = match self.get_number_no_bools(&args[0], cell) {
+        let value_raw = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -174,16 +194,21 @@ impl Model {
         CalcResult::String(result)
     }
 
-    pub(crate) fn fn_dec2hex(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_dec2hex(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value_raw = match self.get_number_no_bools(&args[0], cell) {
+        let value_raw = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f.trunc(),
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -213,16 +238,21 @@ impl Model {
         CalcResult::String(result)
     }
 
-    pub(crate) fn fn_dec2oct(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_dec2oct(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value_raw = match self.get_number_no_bools(&args[0], cell) {
+        let value_raw = match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(f) => f,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -254,16 +284,21 @@ impl Model {
     }
 
     // HEX2BIN(number, [places])
-    pub(crate) fn fn_hex2bin(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_hex2bin(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -313,11 +348,16 @@ impl Model {
     }
 
     // HEX2DEC(number)
-    pub(crate) fn fn_hex2dec(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_hex2dec(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -344,16 +384,21 @@ impl Model {
         CalcResult::Number(value as f64)
     }
 
-    pub(crate) fn fn_hex2oct(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_hex2oct(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -402,16 +447,21 @@ impl Model {
         CalcResult::String(result)
     }
 
-    pub(crate) fn fn_oct2bin(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_oct2bin(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
@@ -457,11 +507,16 @@ impl Model {
         CalcResult::String(result)
     }
 
-    pub(crate) fn fn_oct2dec(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_oct2dec(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
@@ -485,16 +540,21 @@ impl Model {
         CalcResult::Number(value as f64)
     }
 
-    pub(crate) fn fn_oct2hex(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_oct2hex(
+        workbook: &Workbook,
+        cells: &mut HashMap<(u32, i32, i32), CellState>,
+        parsed_formulas: &Vec<Vec<Node>>,
+        language: &Language,
+        args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if !(1..=2).contains(&args.len()) {
             return CalcResult::new_args_number_error(cell);
         }
-        let value = match self.get_string(&args[0], cell) {
+        let value = match Model::get_string(workbook, cells, parsed_formulas, language, &args[0], cell) {
             Ok(s) => s,
             Err(s) => return s,
         };
         let places = if args.len() == 2 {
-            match self.get_number_no_bools(&args[1], cell) {
+            match Model::get_number_no_bools(workbook, cells, parsed_formulas, language, &args[1], cell) {
                 Ok(f) => Some(f.trunc() as i32),
                 Err(s) => return s,
             }
