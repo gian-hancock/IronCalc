@@ -944,11 +944,7 @@ impl Model {
     ) -> CalcResult {
         let func: Option<fn(&mut Model, &[Node], CellReferenceIndex) -> CalcResult> = match kind {
             // Logical
-            Function::Iferror => Some(Model::fn_iferror),
-            Function::Ifna => Some(Model::fn_ifna),
             Function::Ifs => Some(Model::fn_ifs),
-            Function::Not => Some(Model::fn_not),
-            Function::Or => Some(Model::fn_or),
             Function::Switch => Some(Model::fn_switch),
             Function::Xor => Some(Model::fn_xor),
             // Math and trigonometry
@@ -1156,12 +1152,17 @@ impl Model {
 
         let func: fn(&mut Model, Vec<CalcResult>, CellReferenceIndex) -> CalcResult = match kind {
             // Logical
+            Function::And => Model::fn_and,
+            Function::False => fn_false,
             Function::If => Model::fn_if,
-            Function::And => Model::_fn_and,
+            Function::Iferror => Model::fn_iferror, // FIXME: There is no tests for this fn
+            Function::Ifna => Model::fn_ifna,
+            Function::Not => Model::fn_not, // FIXME: There is no tests for this fn
+            Function::Or => Model::fn_or,
+            Function::True => fn_true,
+
             Function::Sum => Model::_fn_sum,
             Function::Na => fn_na,
-            Function::True => fn_true,
-            Function::False => fn_false,
             _ => todo!(),
         };
         let evaluated_args = args.iter().map(|arg| self.evaluate_node_in_context(arg, cell)).collect();
