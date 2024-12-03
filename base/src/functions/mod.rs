@@ -944,7 +944,6 @@ impl Model {
     ) -> CalcResult {
         let func: Option<fn(&mut Model, &[Node], CellReferenceIndex) -> CalcResult> = match kind {
             // Logical
-            Function::If => Some(Model::fn_if),
             Function::Iferror => Some(Model::fn_iferror),
             Function::Ifna => Some(Model::fn_ifna),
             Function::Ifs => Some(Model::fn_ifs),
@@ -1156,6 +1155,8 @@ impl Model {
         }
 
         let func: fn(&mut Model, Vec<CalcResult>, CellReferenceIndex) -> CalcResult = match kind {
+            // Logical
+            Function::If => Model::fn_if,
             Function::And => Model::_fn_and,
             Function::Sum => Model::_fn_sum,
             Function::Na => fn_na,

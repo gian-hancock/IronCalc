@@ -7,21 +7,24 @@ use crate::{
 use super::util::compare_values;
 
 impl Model {
-    pub(crate) fn fn_if(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_if(&mut self, args: Vec<CalcResult>, cell: CellReferenceIndex) -> CalcResult {
         if args.len() == 2 || args.len() == 3 {
-            let cond_result = self.get_boolean(&args[0], cell);
+            let mut args = args.into_iter();
+            let cond = args.next().unwrap();
+            let true_value = args.next().unwrap();
+            let false_value = args.next().unwrap_or(CalcResult::Boolean(false));
+
+            let cond_result = self.cast_to_bool(cond, cell);
             let cond = match cond_result {
                 Ok(f) => f,
                 Err(s) => {
                     return s;
                 }
             };
-            if cond {
-                return self.evaluate_node_in_context(&args[1], cell);
-            } else if args.len() == 3 {
-                return self.evaluate_node_in_context(&args[2], cell);
-            } else {
-                return CalcResult::Boolean(false);
+            return if cond {
+                true_value
+            } else{
+                false_value
             }
         }
         CalcResult::new_args_number_error(cell)
