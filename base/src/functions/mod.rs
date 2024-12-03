@@ -936,6 +936,14 @@ impl Model {
         doc
     }
 
+    pub(crate) fn _evaluate_function_sum(
+        &mut self,
+        args: &[CalcResult],
+        cell: CellReferenceIndex,
+    ) -> CalcResult {
+        self._fn_sum(args, cell)
+    }
+
     pub(crate) fn evaluate_function(
         &mut self,
         kind: &Function,
