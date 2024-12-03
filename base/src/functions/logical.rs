@@ -135,6 +135,76 @@ impl Model {
         CalcResult::Boolean(true)
     }
 
+    pub(crate) fn _fn_and(&mut self, args: Vec<CalcResult>, cell: CellReferenceIndex) -> CalcResult {
+        let mut true_count = 0;
+        for arg in args {
+            match arg {
+                CalcResult::Boolean(b) => {
+                    if !b {
+                        return CalcResult::Boolean(false);
+                    }
+                    true_count += 1;
+                }
+                CalcResult::Number(value) => {
+                    if value == 0.0 {
+                        return CalcResult::Boolean(false);
+                    }
+                    true_count += 1;
+                }
+                CalcResult::String(_value) => {
+                    true_count += 1;
+                }
+                CalcResult::Range { left, right } => {
+                    if left.sheet != right.sheet {
+                        return CalcResult::new_error(
+                            Error::VALUE,
+                            cell,
+                            "Ranges are in different sheets".to_string(),
+                        );
+                    }
+                    for row in left.row..(right.row + 1) {
+                        for column in left.column..(right.column + 1) {
+                            match self.evaluate_cell(CellReferenceIndex {
+                                sheet: left.sheet,
+                                row,
+                                column,
+                            }) {
+                                CalcResult::Boolean(b) => {
+                                    if !b {
+                                        return CalcResult::Boolean(false);
+                                    }
+                                    true_count += 1;
+                                }
+                                CalcResult::Number(value) => {
+                                    if value == 0.0 {
+                                        return CalcResult::Boolean(false);
+                                    }
+                                    true_count += 1;
+                                }
+                                CalcResult::String(_value) => {
+                                    true_count += 1;
+                                }
+                                error @ CalcResult::Error { .. } => return error,
+                                CalcResult::Range { .. } => {}
+                                CalcResult::EmptyCell | CalcResult::EmptyArg => {}
+                            }
+                        }
+                    }
+                }
+                error @ CalcResult::Error { .. } => return error,
+                CalcResult::EmptyCell | CalcResult::EmptyArg => {}
+            };
+        }
+        if true_count == 0 {
+            return CalcResult::new_error(
+                Error::VALUE,
+                cell,
+                "Boolean values not found".to_string(),
+            );
+        }
+        CalcResult::Boolean(true)
+    }
+
     pub(crate) fn fn_or(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut result = false;
         for arg in args {

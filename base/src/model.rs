@@ -21,7 +21,7 @@ use crate::{
         format::{format_number, parse_formatted_number},
         lexer::is_likely_date_number_format,
     },
-    functions::{util::compare_values, Function},
+    functions::util::compare_values,
     implicit_intersection::implicit_intersection,
     language::{get_language, Language},
     locale::{get_locale, Currency, Locale},
@@ -410,16 +410,7 @@ impl Model {
                 CalcResult::Number(l.powf(r))
             }
             FunctionKind { kind, args } => {
-                match kind {
-                    Function::Sum => {
-                        let calc_results = args
-                            .iter()
-                            .map(|arg| self.evaluate_node_in_context(arg, cell))
-                            .collect::<Vec<CalcResult>>();
-                        self._evaluate_function_sum(&calc_results, cell)
-                    },
-                    _ => self.evaluate_function(kind, args, cell),
-                }
+                self.evaluate_function(kind, args, cell)
             },
             InvalidFunctionKind { name, args: _ } => {
                 CalcResult::new_error(Error::ERROR, cell, format!("Invalid function: {}", name))

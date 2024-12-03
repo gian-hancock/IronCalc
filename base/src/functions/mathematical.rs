@@ -178,7 +178,7 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    pub(crate) fn _fn_sum(&mut self, args: &[CalcResult], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn _fn_sum(&mut self, args: Vec<CalcResult>, cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
@@ -244,7 +244,7 @@ impl Model {
                         }
                     }
                 }
-                error @ CalcResult::Error { .. } => return error.clone(),
+                error @ CalcResult::Error { .. } => return error,
                 _ => {
                     // We ignore booleans and strings
                 }
