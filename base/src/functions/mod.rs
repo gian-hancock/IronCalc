@@ -942,25 +942,38 @@ impl Model {
         args: &[Node],
         cell: CellReferenceIndex,
     ) -> CalcResult {
-        fn eval_args_and_execute<F>(
-            model: &mut Model,
-            args: &[Node],
+        struct EvalArgs<'a> {
+            model: &'a mut Model,
+            args: &'a [Node],
             cell: CellReferenceIndex,
-            mut f: F,
-        ) -> CalcResult
+        }
+        let eval_args = EvalArgs {
+            model: self,
+            args,
+            cell,
+        };
+
+        fn eval_args_and_execute<F>(eval_args: EvalArgs, mut f: F) -> CalcResult
         where
             F: FnMut(&mut Model, Vec<CalcResult>) -> CalcResult,
         {
-            let evaluated_args = args
+            let evaluated_args = eval_args
+                .args
                 .iter()
-                .map(|arg| model.evaluate_node_in_context(arg, cell))
+                .map(|arg| {
+                    eval_args
+                        .model
+                        .evaluate_node_in_context(arg, eval_args.cell)
+                })
                 .collect();
-            f(model, evaluated_args)
+            f(eval_args.model, evaluated_args)
         }
 
         match kind {
             // Logical
-            Function::And => eval_args_and_execute(self, args, cell, |model, args| Model::_fn_and(model, args, cell)),
+            Function::And => eval_args_and_execute(eval_args, |model, args| {
+                Model::_fn_and(model, args, cell)
+            }),
             Function::False => CalcResult::Boolean(false),
             Function::If => self.fn_if(args, cell),
             Function::Iferror => self.fn_iferror(args, cell),
@@ -1004,7 +1017,9 @@ impl Model {
             Function::Round => self.fn_round(args, cell),
             Function::Rounddown => self.fn_rounddown(args, cell),
             Function::Roundup => self.fn_roundup(args, cell),
-            Function::Sum => eval_args_and_execute(self, args, cell, |model, args| Model::_fn_sum(model, args, cell)),
+            Function::Sum => eval_args_and_execute(eval_args, |model, args| {
+                Model::_fn_sum(model, args, cell)
+            }),
             Function::Sumif => self.fn_sumif(args, cell),
             Function::Sumifs => self.fn_sumifs(args, cell),
 
