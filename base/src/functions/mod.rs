@@ -944,7 +944,6 @@ impl Model {
     ) -> CalcResult {
         let func: Option<fn(&mut Model, &[Node], CellReferenceIndex) -> CalcResult> = match kind {
             // Logical
-            Function::Ifs => Some(Model::fn_ifs),
             Function::Switch => Some(Model::fn_switch),
             Function::Xor => Some(Model::fn_xor),
             // Math and trigonometry
@@ -1157,6 +1156,7 @@ impl Model {
             Function::If => Model::fn_if,
             Function::Iferror => Model::fn_iferror, // FIXME: There is no tests for this fn
             Function::Ifna => Model::fn_ifna,
+            Function::Ifs => Model::fn_ifs,
             Function::Not => Model::fn_not, // FIXME: There is no tests for this fn
             Function::Or => Model::fn_or,
             Function::True => fn_true,

@@ -265,7 +265,7 @@ impl Model {
     }
 
     /// =SWITCH(expression, case1, value1, [case, value]*, [default])
-    pub(crate) fn fn_switch(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_switch(&mut self, args: Vec<CalcResult>, cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count < 3 {
             return CalcResult::new_args_number_error(cell);
@@ -301,7 +301,7 @@ impl Model {
     }
 
     /// =IFS(condition1, value, [condition, value]*)
-    pub(crate) fn fn_ifs(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_ifs(&mut self, args: Vec<CalcResult>, cell: CellReferenceIndex) -> CalcResult {
         let args_count = args.len();
         if args_count < 2 {
             return CalcResult::new_args_number_error(cell);
@@ -311,12 +311,14 @@ impl Model {
             return CalcResult::new_args_number_error(cell);
         }
         let case_count = args_count / 2;
-        for case_index in 0..case_count {
-            let value = self.get_boolean(&args[2 * case_index], cell);
-            match value {
+        let mut args = args.into_iter();
+        for _case_index in 0..case_count {
+            let condition = self.cast_to_bool(args.next().unwrap(), cell);
+            let value = args.next().unwrap();
+            match condition {
                 Ok(b) => {
                     if b {
-                        return self.evaluate_node_in_context(&args[2 * case_index + 1], cell);
+                        return value;
                     }
                 }
                 Err(s) => return s,
