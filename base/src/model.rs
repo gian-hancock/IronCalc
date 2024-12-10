@@ -99,7 +99,7 @@ pub(crate) enum ParsedDefinedName {
 pub struct Model {
     /// A Rust internal representation of an Excel workbook
     pub workbook: Workbook,
-    /// A list of parsed formulas
+    /// A list of parsed formulas by sheet
     pub parsed_formulas: Vec<Vec<Node>>,
     /// A list of parsed defined names
     pub(crate) parsed_defined_names: HashMap<(Option<u32>, String), ParsedDefinedName>,

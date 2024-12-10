@@ -8,6 +8,7 @@ mod test_criteria;
 mod test_currency;
 mod test_date_and_time;
 mod test_error_propagation;
+mod test_fn_and;
 mod test_fn_average;
 mod test_fn_averageifs;
 mod test_fn_choose;

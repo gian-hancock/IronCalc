@@ -3,6 +3,22 @@
 use crate::test::util::new_empty_model;
 
 #[test]
+fn fn_if_arguments_new() {
+    assert_arg_count_errors("if", [0, 1, 4]);
+}
+
+fn assert_arg_count_errors(fn_name: &str, invalid_arg_counts: impl IntoIterator<Item = i32>) {  
+    for arg_count in invalid_arg_counts {
+        let mut model = new_empty_model();
+        let arg_list = (0..arg_count).map(|x| x.to_string()).collect::<Vec<_>>().join(", ");
+        model._set("A1", &format!("={fn_name}({arg_list})"));
+        model.evaluate();
+        assert_eq!(model._get_text("A1"), *"#ERROR!");
+    }
+}
+
+
+#[test]
 fn fn_if_arguments() {
     let mut model = new_empty_model();
     model._set("A1", "=IF()");

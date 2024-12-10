@@ -24,7 +24,7 @@ pub(crate) mod util;
 mod xlookup;
 
 /// List of all implemented functions
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug, Hash, Eq)]
 pub enum Function {
     // Logical
     And,
