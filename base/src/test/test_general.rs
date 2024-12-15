@@ -519,3 +519,36 @@ fn test_letter_case() {
         Some("=SIN(2)".to_string())
     );
 }
+
+#[test]
+fn test_spill_range() {
+    let mut model = new_empty_model();
+    model._set("A1", "=B1:B5");
+    model._set("A10", "=B1:B5");
+    model._set("A20", "=B1:B5");
+    model._set("A22", "test");
+    model._set("A30", "=@B1:B5");
+    model._set("A40", "=@B40:B45");
+
+    model.evaluate();
+
+    // Calc performs implicit intersection, Excel spills the range
+
+    assert_eq!(model._get_text("A1"), *"0"); // Excel 365 =0, Sheets=<empty>, Calc=0
+    // TODO: Following asserts fail as spill not implemented yet and implicit intersection is performed instead.
+    // assert_eq!(model._get_text("A2"), *"0"); // Excel=0, Sheets=<empty>, Calc=<empty>
+
+    // assert_eq!(model._get_text("A10"), *"0"); // Excel=0, Sheets=#VALUE!, Calc=#VALUE!
+    // assert_eq!(model._get_text("A11"), *"0"); // Excel=0, Sheets=<empty>, Calc=<empty>
+
+    // assert_eq!(model._get_text("A20"), *"#SPILL!"); // Excel=#SPILL!, Sheets=#VALUE!, Calc=#VALUE!
+    // assert_eq!(model._get_text("A21"), *""); // Excel=<empty>, Sheets=<empty>, Calc=<empty>
+    // assert_eq!(model._get_text("A22"), *"test"); // Excel=test, Sheets=test, Calc=test
+
+    // Don't spill if @ is used (enables implicit intersection in Excel 365)
+    // assert_eq!(model._get_text("A30"), *"#VALUE!");
+    // assert_eq!(model._get_text("A31"), *"");
+
+    // assert_eq!(model._get_text("A40"), *"0");
+    // assert_eq!(model._get_text("A41"), *"");
+}
