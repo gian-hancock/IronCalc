@@ -7,6 +7,7 @@ TextValues: String values treated as TRUE while Excel ignores them
 IgnoreEmptyCell/Arg: If all arguments are ignored (EmptyCell/String), return #VALUE!. Bizarely, EmptyArg is not ignored but counts as FALSE.
 ErrorIfNoArgs: If no arguments are provided, return #VALUE!
 EmptyArgIsFalse: If an argument is EmptyArg, it is treated as FALSE
+ErrorPropagation: Errors not propagated in XOR for range arguments
  */
 
 // These tessts are grouped because in many cases XOR and OR have similar behaviour.
@@ -101,6 +102,23 @@ fn fn_or_xor() {
         model._set("X16", "1");
         model._set("B16", r#"=@X16:Z16"#);
         model._set("A16", &format!(r#"={func}(B16)"#));
+
+        // Non-empty range
+        model._set("B17", "1");
+        model._set("A17", &format!(r#"={func}(B17:C17)"#));
+
+        // Non-empty range with text
+        model._set("B18", "text");
+        model._set("A18", &format!(r#"={func}(B18:C18)"#));
+
+        // Non-empty range with text and number
+        model._set("B19", "text");
+        model._set("C19", "1");
+        model._set("A19", &format!(r#"={func}(B19:C19)"#));
+
+        // range with error
+        model._set("B20", "=1/0");
+        model._set("A20", &format!(r#"={func}(B20:C20)"#));
     
         model.evaluate();
 
@@ -129,6 +147,14 @@ fn fn_or_xor() {
 
         // TODO: This one depends on @ implicit intersection behaviour which isn't implemented yet
         // assert_eq!(model._get_text("A16"), *"#VALUE!");
+
+        assert_eq!(model._get_text("A17"), *"TRUE");
+
+        // Returns TRUE: TextValues - assert_eq!(model._get_text("A18"), *"#VALUE!");
+
+        assert_eq!(model._get_text("A19"), *"TRUE");
+
+        // Returns #VALUE! ErrorPropagation - assert_eq!(model._get_text("A20"), *"#DIV/0!");
     }
 }
 
