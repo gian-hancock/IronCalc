@@ -26,6 +26,7 @@ mod test_fn_sumifs;
 mod test_fn_textbefore;
 mod test_fn_textjoin;
 mod test_fn_unicode;
+mod test_fn_or_xor;
 mod test_forward_references;
 mod test_frozen_rows_columns;
 mod test_general;
@@ -46,7 +47,6 @@ pub(crate) mod util;
 
 mod engineering;
 mod test_fn_offset;
-mod test_fn_or;
 mod test_number_format;
 
 mod test_escape_quotes;
