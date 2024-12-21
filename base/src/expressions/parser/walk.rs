@@ -23,6 +23,7 @@ pub(crate) fn forward_references(
             let reference_row_absolute = if *absolute_row {
                 *reference_row
             } else {
+                // FIXME GH: Use CellReferenceIndex helper
                 *reference_row + context.row
             };
             let reference_column_absolute = if *absolute_column {
@@ -59,6 +60,7 @@ pub(crate) fn forward_references(
             let reference_row1 = if *absolute_row1 {
                 *row1
             } else {
+                // FIXME GH: Use CellReferenceIndex helper
                 *row1 + context.row
             };
             let reference_column1 = if *absolute_column1 {

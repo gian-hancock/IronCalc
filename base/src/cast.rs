@@ -182,6 +182,7 @@ impl Model {
                 sheet_index,
                 sheet_name: _,
             } => {
+                // FIXME GH: Use CellReferenceIndex helper
                 let left = CellReferenceIndex {
                     sheet: *sheet_index,
                     row: if *absolute_row { *row } else { *row + cell.row },

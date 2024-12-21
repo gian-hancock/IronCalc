@@ -163,6 +163,7 @@ impl Model {
                 // comes from a reference, in which case it is always ignored regardless of its value.
                 CalcResult::String(..) => {
                     if !matches!(arg, Node::ReferenceKind { .. }) {
+                        // FIXME GH: Can I use get_boolean in other arms?
                         if let Ok(f) = self.get_boolean(arg, cell) {
                             result = Some(fold_fn(result, f));
                         }

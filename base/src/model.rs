@@ -145,9 +145,11 @@ impl Model {
                 row,
                 column,
             } => {
+                // FIXME GH: Use CellReferenceIndex helper
                 let mut row1 = *row;
                 let mut column1 = *column;
                 if !absolute_row {
+                    // FIXME GH: Use CellReferenceIndex helper
                     row1 += cell.row;
                 }
                 if !absolute_column {
@@ -181,11 +183,13 @@ impl Model {
                 let mut row_left = *row1;
                 let mut column_left = *column1;
                 if !absolute_row1 {
+                    // FIXME GH: Use CellReferenceIndex helper
                     row_left += cell.row;
                 }
                 if !absolute_column1 {
                     column_left += cell.column;
                 }
+                // FIXME GH: Use CellReferenceIndex helper
                 let mut row_right = *row2;
                 let mut column_right = *column2;
                 if !absolute_row2 {
@@ -289,6 +293,7 @@ impl Model {
                 row,
                 column,
             } => {
+                // FIXME GH: Use CellReferenceIndex helper
                 let mut row1 = *row;
                 let mut column1 = *column;
                 if !absolute_row {
@@ -327,6 +332,7 @@ impl Model {
                     row: if *absolute_row1 {
                         *row1
                     } else {
+                        // FIXME GH: Use CellReferenceIndex helper
                         *row1 + cell.row
                     },
                     column: if *absolute_column1 {

@@ -117,6 +117,7 @@ impl Model {
                 let mut row1 = *row;
                 let mut column1 = *column;
                 if !absolute_row {
+                    // FIXME GH: Use CellReferenceIndex helper
                     row1 += cell.row;
                 }
                 if !absolute_column {
@@ -144,6 +145,7 @@ impl Model {
                 let mut row1 = *row1;
                 let mut column1 = *column1;
                 if !absolute_row1 {
+                    // FIXME GH: Use CellReferenceIndex helper
                     row1 += cell.row;
                 }
                 if !absolute_column1 {

@@ -73,6 +73,7 @@ fn to_string_moved(node: &Node, move_context: &MoveContext) -> String {
             let reference_row = if *absolute_row {
                 *row
             } else {
+                // FIXME GH: Use CellReferenceIndex helper
                 row + move_context.row
             };
             let reference_column = if *absolute_column {
@@ -146,6 +147,7 @@ fn to_string_moved(node: &Node, move_context: &MoveContext) -> String {
             let reference_row1 = if *absolute_row1 {
                 *row1
             } else {
+                // FIXME GH: Use CellReferenceIndex helper
                 row1 + move_context.row
             };
             let reference_column1 = if *absolute_column1 {
