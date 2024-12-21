@@ -159,10 +159,19 @@ impl Model {
                 }
                 error @ CalcResult::Error { .. } => return error,
                 CalcResult::EmptyArg => result = Some(result.unwrap_or(false)),
-                // Text values and references to empty cells are ignored. If all args are ignored the result is #VALUE!
-                CalcResult::EmptyCell | CalcResult::String(..) => {}
-            };
-
+                // Strings are ignored unless they are "TRUE" or "FALSE" (case insensitive). EXCEPT if the string value 
+                // comes from a reference, in which case it is always ignored regardless of its value.
+                CalcResult::String(..) => {
+                    if !matches!(arg, Node::ReferenceKind { .. }) {
+                        if let Ok(f) = self.get_boolean(arg, cell) {
+                            result = Some(fold_fn(result, f));
+                        }
+                    }
+                }
+                // References to empty cells are ignored. If all args are ignored the result is #VALUE!
+                CalcResult::EmptyCell => {}
+            }
+            
             if let (Some(current_result), Some(short_circuit_value)) = (result, short_circuit_value)
             {
                 if current_result == short_circuit_value {
