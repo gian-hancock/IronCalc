@@ -84,7 +84,7 @@ fn fn_or_xor() {
         model._set("A7", &format!(r#"={func}(TRUE, FALSE)"#));
 
         // Reference to empty cell, plus true argument
-        model._set("A8", &format!(r#"={func}(Z99, 1)"#));
+        model._set("A8", &format!(r#"={func}(Z99, 1)"#));   
 
         // Reference to empty cell/range
         model._set("A9", &format!(r#"={func}(Z99)"#));
@@ -107,7 +107,7 @@ fn fn_or_xor() {
 
         // Reference to Implicit intersection
         model._set("X16", "1");
-        model._set("B16", r#"=@X16:Z16"#);
+        model._set("B16", r#"=@X15:X16"#);
         model._set("A16", &format!(r#"={func}(B16)"#));
 
         // Non-empty range
@@ -153,7 +153,7 @@ fn fn_or_xor() {
         assert_eq!(model._get_text("A15"), *"TRUE");
 
         // TODO: This one depends on @ implicit intersection behaviour which isn't implemented yet
-        // assert_eq!(model._get_text("A16"), *"#VALUE!");
+        // assert_eq!(model._get_text("A16"), *"TRUE");
 
         assert_eq!(model._get_text("A17"), *"TRUE");
 
