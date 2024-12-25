@@ -500,105 +500,107 @@ fn test_documentation_xlsx() {
 
 struct FunctionInfo {
     name: &'static str,
-    airity: Vec<Box<dyn MyRange>>,
-}
-
-struct FunctionInfo2<'a> {
-    name: &'static str,
-    airity: Vec<&'a dyn MyRange>,
-}
-
-trait MyRange {
-    fn contains(&self, value: usize) -> bool;
-}
-
-impl MyRange for Range<usize> {
-    fn contains(&self, value: usize) -> bool {
-        self.contains(&value)
-    }
-}
-
-impl MyRange for RangeFrom<usize> {
-    fn contains(&self, value: usize) -> bool {
-        self.contains(&value)
-    }
-}
-
-impl MyRange for RangeTo<usize> {
-    fn contains(&self, value: usize) -> bool {
-        self.contains(&value)
-    }
-}
-
-impl MyRange for RangeFull {
-    fn contains(&self, _value: usize) -> bool {
-        true
-    }
-}
-
-impl MyRange for RangeInclusive<usize> {
-    fn contains(&self, value: usize) -> bool {
-        self.contains(&value)
-    }
-}
-
-impl MyRange for RangeToInclusive<usize> {
-    fn contains(&self, value: usize) -> bool {
-        self.contains(&value)
-    }
-}
-
-impl<F> MyRange for F
-    where F: Fn(usize) -> bool ,
-{
-    fn contains(&self, value: usize) -> bool {
-        self(value)
-    }
+    airity: Vec<u8>,
 }
 
 fn get_fn_info() -> Vec<FunctionInfo> {
-    let even_gt_0: Box<dyn MyRange> = Box::new(|v: usize| v > 0 && v % 2 == 0);
-
     vec![
-        FunctionInfo { name: "ABS", airity: vec![Box::new(1..=1)] },
-        FunctionInfo { name: "OR", airity: vec![Box::new(1..)] },
-        FunctionInfo { name: "AND", airity: vec![Box::new(1..)] },
-        FunctionInfo { name: "NOT", airity: vec![Box::new(1..=1)] },
-        FunctionInfo { name: "IF", airity: vec![Box::new(2..=3)] },
-        FunctionInfo { name: "IFERROR", airity: vec![Box::new(2..=2)] },
-        FunctionInfo { name: "IFNA", airity: vec![Box::new(2..=2)] },
-        FunctionInfo { name: "IFNA", airity: vec![even_gt_0] },
+        FunctionInfo { name: "ABS", airity: (1..=1).collect() },
+        FunctionInfo { name: "OR", airity: (1..=5).collect() },
+        FunctionInfo { name: "AND", airity: (1..=5).collect() },
+        FunctionInfo { name: "NOT", airity: (1..=1).collect() },
+        FunctionInfo { name: "IF", airity: (2..=3).collect() },
+        FunctionInfo { name: "IFERROR", airity: (2..=2).collect() },
+        FunctionInfo { name: "IFS", airity: vec![2, 4] },
+        FunctionInfo { name: "IFNA", airity: (2..=2).collect() },
+        FunctionInfo { name: "SWITCH", airity: (3..=5).collect() },
+        FunctionInfo { name: "CHOOSE", airity: (2..=5).collect() },
+        FunctionInfo { name: "XOR", airity: (1..=5).collect() },
+        FunctionInfo { name: "OR", airity: (1..=5).collect() },
+        FunctionInfo { name: "AND", airity: (1..=5).collect() },
+        FunctionInfo { name: "SUM", airity: (1..=5).collect() },
+
+        // Allowed airities depends on the type of the arguments
+        // FunctionInfo { name: "SUMIFS", airity: (3..=5).collect() },
     ]
 }
 
-fn get_fn_info_2() -> Vec<FunctionInfo2<'static>> {
+fn get_values() -> Vec<&'static str> {
     vec![
-        FunctionInfo2 { name: "ABS", airity: vec![&(1..=1)] },
-        FunctionInfo2 { name: "OR", airity: vec![&(1..)] },
-        FunctionInfo2 { name: "AND", airity: vec![&(1..)] },
-        FunctionInfo2 { name: "NOT", airity: vec! [&(1..=1)] },
-        FunctionInfo2 { name: "IF", airity: vec! [&(2..=3)] },
-        FunctionInfo2 { name: "IFERROR", airity: vec! [&(2..=2)] },
-        FunctionInfo2 { name: "IFNA", airity: vec! [&(2..=2)] },
-        FunctionInfo2 { name: "IFNA", airity: vec![Box::leak(Box::new(|v: usize| v > 0 && v % 2 == 0))] },
+        "-1",
+        "0",
+        "1",
+        r#""-1""#,
+        r#""0""#,
+        r#""1""#,
+        r#""TRUE""#,
+        r#""FALSE""#,
+        r"TRUE",
+        r"FALSE",
+        "10000000000000000", // Beyond integer precision for double, rounded to even number
+        "-10000000000000000", // Beyond integer precision for double, rounded to even number
+        "10000000000000001", // Beyond integer precision for double, rounded to even number
+        "-10000000000000001", // Beyond integer precision for double, rounded to even number
+        "2^53",
+        "-2^1024",
     ]
 }
-        // FunctionInfo { name: "IFS", airity: [] },
-        // FunctionInfo { name: "SWITCH", airity: [] },
-        // FunctionInfo { name: "CHOOSE", airity: [] },
-        // FunctionInfo { name: "XOR", airity: [] },
-        // FunctionInfo { name: "OR", airity: [] },
-        // FunctionInfo { name: "AND", airity: [] },
-        // FunctionInfo { name: "SUM", airity: [] },
-        // FunctionInfo { name: "SUMIF",  airity: [] },
-        // FunctionInfo { name: "SUMIFS", airity: [] },
-//     ]
-// }
+
+#[test]
+fn create_test_model_2() {
+
+    let func_info = get_fn_info();
+    let values = get_values();
+
+    let mut model = Model::new_empty("model", "en", "UTC").unwrap();
+
+    // All permutations of 5 values
+    let mut i: usize = 1;
+
+    fn set_formula(i: usize, args: &[&str], func_name: &str, model: &mut Model) {
+        let args_list = args.join(", ");
+        let formula = format!(
+            "={}({args_list})",
+            func_name
+        );
+        let text = format!("'{formula}");
+        model.set_user_input(0, i as i32, 1, text).unwrap();
+        model.set_user_input(0, i as i32, 2, formula).unwrap();
+    }
+
+    for func in func_info.iter() {
+        if func.airity.contains(&0) {
+            set_formula(i, &[], func.name, &mut model);
+            i += 1;
+        }
+        for arg1 in values.iter() {
+            if func.airity.contains(&1) {
+                set_formula(i, &[arg1], func.name, &mut model);
+                i += 1;
+            }
+            for arg2 in values.iter() {
+                if func.airity.contains(&2) {
+                    set_formula(i, &[arg1, arg2], func.name, &mut model);
+                    i += 1;
+                }
+                for arg3 in values.iter() {
+                    if func.airity.contains(&3) {
+                        set_formula(i, &[arg1, arg2, arg3], func.name, &mut model);
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    model.evaluate();
+    fs::remove_file("test_output.xlsx").unwrap_or_default();
+    save_to_xlsx(&model, "test_output.xlsx").unwrap();
+}
 
 #[test]
 fn create_test_model() {
     get_fn_info();
-    get_fn_info_2();
     let mut values = Vec::new();
     values.push("-1");
     values.push("0");
@@ -610,9 +612,9 @@ fn create_test_model() {
     values.push("2^53");
     values.push("-2^1024");
 
-    let mut functions = vec![
-        "OR", "AND", "NOT", "IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE", "XOR", "OR", "AND", "SUM", "SUMIF", 
-        "SUMIFS",
+    let functions = vec![
+        "OR", // "AND", "NOT", "IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE", "XOR", "OR", "AND", "SUM", "SUMIF", 
+        // "SUMIFS",
     ];
     // WQ: for some reason this one causes an error when loading in Excel
     // values.push("=-2^1023");
