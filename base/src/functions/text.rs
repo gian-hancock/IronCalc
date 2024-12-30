@@ -74,6 +74,7 @@ impl Model {
                             "Ranges are in different sheets".to_string(),
                         );
                     }
+                    // WQ: Assess this
                     for row in left.row..(right.row + 1) {
                         for column in left.column..(right.column + 1) {
                             match self.evaluate_cell(CellReferenceIndex {
@@ -958,6 +959,7 @@ impl Model {
                             }
                         };
                     }
+                    // WQ: Assess this
                     for row in row1..row2 + 1 {
                         for column in column1..(column2 + 1) {
                             match self.evaluate_cell(CellReferenceIndex {

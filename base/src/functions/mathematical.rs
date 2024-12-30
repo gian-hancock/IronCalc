@@ -17,6 +17,7 @@ pub fn random() -> f64 {
 }
 
 impl Model {
+    // WQ:
     pub(crate) fn fn_min(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut result = f64::NAN;
         for arg in args {
@@ -60,6 +61,7 @@ impl Model {
         CalcResult::Number(result)
     }
 
+    // WQ:
     pub(crate) fn fn_max(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         let mut result = f64::NAN;
         for arg in args {
@@ -103,6 +105,7 @@ impl Model {
         CalcResult::Number(result)
     }
 
+    // WQ:
     pub(crate) fn fn_sum(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
@@ -111,7 +114,6 @@ impl Model {
         let mut result = 0.0;
         for arg in args {
             match self.evaluate_node_in_context(arg, cell) {
-                CalcResult::Number(value) => result += value,
                 CalcResult::Range { left, right } => {
                     if left.sheet != right.sheet {
                         return CalcResult::new_error(
@@ -170,14 +172,18 @@ impl Model {
                     }
                 }
                 error @ CalcResult::Error { .. } => return error,
-                _ => {
-                    // We ignore booleans and strings
+                calc_result => {
+                    match self.cast_to_number(calc_result, cell) {
+                        Ok(f) => result += f,
+                        Err(s) => return s,
+                    }
                 }
             };
         }
         CalcResult::Number(result)
     }
 
+    // WQ:
     pub(crate) fn fn_product(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
@@ -186,10 +192,6 @@ impl Model {
         let mut seen_value = false;
         for arg in args {
             match self.evaluate_node_in_context(arg, cell) {
-                CalcResult::Number(value) => {
-                    seen_value = true;
-                    result *= value;
-                }
                 CalcResult::Range { left, right } => {
                     if left.sheet != right.sheet {
                         return CalcResult::new_error(
@@ -246,14 +248,21 @@ impl Model {
                     }
                 }
                 error @ CalcResult::Error { .. } => return error,
-                _ => {
-                    // We ignore booleans and strings
+                calc_result => {
+                    dbg!(self.cast_to_number(calc_result.clone(), cell));
+                    seen_value = true;
+                    match self.cast_to_number(calc_result, cell) {
+                        Ok(f) => result *= f,
+                        Err(s) => return s,
+                    }
+                    dbg!(result);
                 }
             };
         }
         if !seen_value {
             return CalcResult::Number(0.0);
         }
+        dbg!(result);
         CalcResult::Number(result)
     }
 

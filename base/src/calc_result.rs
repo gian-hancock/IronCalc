@@ -8,7 +8,7 @@ pub struct Range {
     pub right: CellReferenceIndex,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum CalcResult {
     String(String),
     Number(f64),

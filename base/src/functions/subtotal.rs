@@ -147,6 +147,7 @@ impl Model {
                             let column1 = left.column;
                             let column2 = right.column;
 
+                            // WQ:
                             for row in row1..=row2 {
                                 let cell_status = self
                                     .cell_hidden_status(left.sheet, row, column1)
@@ -388,6 +389,7 @@ impl Model {
                             let column1 = left.column;
                             let column2 = right.column;
 
+                            // WQ: Assess this
                             for row in row1..=row2 {
                                 let cell_status = match self
                                     .cell_hidden_status(left.sheet, row, column1)
@@ -464,6 +466,7 @@ impl Model {
                             let column1 = left.column;
                             let column2 = right.column;
 
+                            // WQ: Assess this
                             for row in row1..=row2 {
                                 let cell_status = match self
                                     .cell_hidden_status(left.sheet, row, column1)

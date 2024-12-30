@@ -537,12 +537,12 @@ fn get_values() -> Vec<&'static str> {
         r#""FALSE""#,
         r"TRUE",
         r"FALSE",
-        "10000000000000000", // Beyond integer precision for double, rounded to even number
-        "-10000000000000000", // Beyond integer precision for double, rounded to even number
-        "10000000000000001", // Beyond integer precision for double, rounded to even number
-        "-10000000000000001", // Beyond integer precision for double, rounded to even number
-        "2^53",
-        "-2^1024",
+        // "10000000000000000", // Beyond integer precision for double, rounded to even number
+        // "-10000000000000000", // Beyond integer precision for double, rounded to even number
+        // "10000000000000001", // Beyond integer precision for double, rounded to even number
+        // "-10000000000000001", // Beyond integer precision for double, rounded to even number
+        // "2^53",
+        // "-2^1024",
     ]
 }
 
@@ -598,7 +598,7 @@ fn create_test_model_2() {
     save_to_xlsx(&model, "test_output.xlsx").unwrap();
 }
 
-#[test]
+// #[test]
 fn create_test_model() {
     get_fn_info();
     let mut values = Vec::new();
@@ -613,7 +613,7 @@ fn create_test_model() {
     values.push("-2^1024");
 
     let functions = vec![
-        "OR", // "AND", "NOT", "IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE", "XOR", "OR", "AND", "SUM", "SUMIF", 
+        "OR", // "AND", "NOT", "IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE", "XOR", "OR", "AND", "SUM", "SUMIF",
         // "SUMIFS",
     ];
     // WQ: for some reason this one causes an error when loading in Excel

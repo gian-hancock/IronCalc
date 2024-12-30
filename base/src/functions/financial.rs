@@ -198,6 +198,7 @@ fn compute_ppmt(
 // In these formulas the payment (pmt) is normally negative
 
 impl Model {
+    // WQ: Assess this
     fn get_array_of_numbers_generic(
         &mut self,
         arg: &Node,
@@ -825,6 +826,7 @@ impl Model {
                             }
                         };
                     }
+                    // WQ: Assess
                     for row in row1..row2 + 1 {
                         for column in column1..(column2 + 1) {
                             match self.evaluate_cell(CellReferenceIndex {
