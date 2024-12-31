@@ -1,3 +1,4 @@
+use crate::calc_result::{Range, RangeIter};
 use crate::constants::{LAST_COLUMN, LAST_ROW};
 use crate::expressions::types::CellReferenceIndex;
 use crate::{
@@ -14,6 +15,54 @@ pub fn random() -> f64 {
 pub fn random() -> f64 {
     use js_sys::Math;
     Math::random()
+}
+
+// WQ: Consider calling this arg_list iterator or something
+struct NodeIterator<'a, T: Iterator<Item = &'a Node>> {
+    model: &'a mut Model,
+    nodes: T,
+    cell: CellReferenceIndex,
+    range_iter: Option<RangeIter>,
+}
+
+impl<'a, T: Iterator<Item = &'a Node>> NodeIterator<'a, T> {
+    fn new(model: &'a mut Model, nodes: T, cell: CellReferenceIndex) -> Self {
+        NodeIterator {
+            model,
+            nodes,
+            cell,
+            range_iter: None,
+        }
+    }
+}
+
+impl<'a, T: Iterator<Item = &'a Node>> Iterator for NodeIterator<'a, T> {
+    type Item = (CalcResult, bool);
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(range_iter) = &mut self.range_iter {
+            return range_iter.next().map(|cell| (self.model.evaluate_cell(cell), true));
+        } else {
+            let next = self.nodes.next();
+            if next.is_none() {
+                return None
+            } else {
+                let result = self.model.evaluate_node_in_context(next.unwrap(), self.cell);
+                if let CalcResult::Range { left, right } = &result {
+                    self.range_iter = Some(RangeIter{
+                        range: Range {
+                            left: left.clone(),
+                            right: right.clone(),
+                        },
+                        i: left.clone(),
+                    });
+                    return self.next();
+                } else {
+                    return Some((result, false))
+                }
+            }
+        }
+    }
 }
 
 impl Model {
@@ -106,7 +155,7 @@ impl Model {
     }
 
     // WQ:
-    pub(crate) fn fn_sum(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+    pub(crate) fn fn_sum_old(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }
@@ -129,6 +178,8 @@ impl Model {
                     let mut row2 = right.row;
                     let column1 = left.column;
                     let mut column2 = right.column;
+
+                    // Optimisation for full row/column ranges (e.g. A:A or 1:1)
                     if row1 == 1 && row2 == LAST_ROW {
                         row2 = match self.workbook.worksheet(left.sheet) {
                             Ok(s) => s.dimension().max_row,
@@ -153,6 +204,8 @@ impl Model {
                             }
                         };
                     }
+
+
                     for row in row1..row2 + 1 {
                         for column in column1..(column2 + 1) {
                             match self.evaluate_cell(CellReferenceIndex {
@@ -180,6 +233,41 @@ impl Model {
                 }
             };
         }
+        CalcResult::Number(result)
+    }
+
+    pub(crate) fn fn_sum(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+        if args.is_empty() {
+            return CalcResult::new_args_number_error(cell);
+        }
+
+        let mut result = 0.0;
+
+        let values = NodeIterator::new(self, args.iter(), cell.clone());
+
+        for (calc_result, is_nested) in values {
+            println!("calc_result: {:?}", calc_result);
+            match calc_result {
+                error @ CalcResult::Error { .. } => return error,
+                _ => {
+                    if is_nested {
+                        match calc_result {
+                            CalcResult::Number(f) => result += f,
+                            _ => {
+                                // WQ: I know strings aren't cast to numbers when nested, but what about booleans and 
+                                // other types?
+                            }
+                        }
+                    } else {
+                        match Model::cast_to_number_no_ii(calc_result, cell) {
+                            Ok(f) => result += f,
+                            Err(s) => return s,
+                        }
+                    }
+                }
+            }
+        }
+
         CalcResult::Number(result)
     }
 

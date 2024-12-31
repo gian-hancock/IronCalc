@@ -8,6 +8,28 @@ pub struct Range {
     pub right: CellReferenceIndex,
 }
 
+pub struct RangeIter {
+    pub range: Range,
+    pub i: CellReferenceIndex,
+}
+
+impl Iterator for RangeIter {
+    type Item = CellReferenceIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.i.column >  self.range.right.column {
+            self.i.column = self.range.left.column;
+            self.i.row += 1;
+        }
+        if self.i.row > self.range.right.row {
+            return None;
+        }
+        let result = self.i;
+        self.i.column += 1;
+        Some(result)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum CalcResult {
     String(String),

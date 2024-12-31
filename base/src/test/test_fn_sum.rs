@@ -27,7 +27,7 @@ fn test_fn_sum() {
 
     // Text in range not converted to a number
     model._set("A3", r#"=SUM(B3:D3)"#);
-    model._set("B3", r#""100"#);
+    model._set("B3", r#"="100""#);
 
     // Invalid text causes #VALUE!
     model._set("A4", r#"=SUM("a")"#);

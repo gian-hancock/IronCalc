@@ -15,6 +15,57 @@ impl Model {
         self.cast_to_number(result, cell)
     }
 
+    pub(crate) fn cast_to_number_no_ii(
+        result: CalcResult,
+        cell: CellReferenceIndex,
+    ) -> Result<f64, CalcResult> {
+        dbg!(&result);
+        if let CalcResult::String(s) = &result {
+            dbg!("100");
+            dbg!(&s);
+        }
+        let r = match result {
+            CalcResult::Number(f) => Ok(f),
+            CalcResult::String(s) => match s.parse::<f64>() {
+                Ok(f) => Ok(f),
+                _ => Err(CalcResult::new_error(
+                    Error::VALUE,
+                    cell,
+                    "Expecting number".to_string(),
+                )),
+            },
+            CalcResult::Boolean(f) => {
+                if f {
+                    Ok(1.0)
+                } else {
+                    Ok(0.0)
+                }
+            }
+            CalcResult::EmptyCell | CalcResult::EmptyArg => Ok(0.0),
+            error @ CalcResult::Error { .. } => Err(error),
+            // WQ: What to do with ranges here?
+            // CalcResult::Range { left, right } => {
+            //     match implicit_intersection(&cell, &Range { left, right }) {
+            //         Some(cell_reference) => {
+            //             let result = self.evaluate_cell(cell_reference);
+            //             self.cast_to_number(result, cell_reference)
+            //         }
+            //         None => Err(CalcResult::Error {
+            //             error: Error::VALUE,
+            //             origin: cell,
+            //             message: "Invalid reference (number)".to_string(),
+            //         }),
+            //     }
+            // }
+            x => {
+                dbg!(&x);
+                unimplemented!();
+            }
+        };
+        dbg!(&r);
+        r
+    }
+
     pub(crate) fn cast_to_number(
         &mut self,
         result: CalcResult,
