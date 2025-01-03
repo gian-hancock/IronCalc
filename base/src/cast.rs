@@ -15,34 +15,37 @@ impl Model {
         self.cast_to_number(result, cell)
     }
 
+    // WQ: Option<Result>> is an ugly return type.
     pub(crate) fn cast_to_number_no_ii(
         result: CalcResult,
         cell: CellReferenceIndex,
-    ) -> Result<f64, CalcResult> {
+    ) -> Option<Result<f64, CalcResult>> {
         dbg!(&result);
         if let CalcResult::String(s) = &result {
             dbg!("100");
             dbg!(&s);
         }
         let r = match result {
-            CalcResult::Number(f) => Ok(f),
+            CalcResult::Number(f) => Some(Ok(f)),
             CalcResult::String(s) => match s.parse::<f64>() {
-                Ok(f) => Ok(f),
-                _ => Err(CalcResult::new_error(
+                Ok(f) => Some(Ok(f)),
+                _ => Some(Err(CalcResult::new_error(
                     Error::VALUE,
                     cell,
                     "Expecting number".to_string(),
-                )),
+                ))),
             },
             CalcResult::Boolean(f) => {
                 if f {
-                    Ok(1.0)
+                    Some(Ok(1.0))
                 } else {
-                    Ok(0.0)
+                    Some(Ok(0.0))
                 }
-            }
-            CalcResult::EmptyCell | CalcResult::EmptyArg => Ok(0.0),
-            error @ CalcResult::Error { .. } => Err(error),
+            },
+            CalcResult::EmptyArg => None,
+            // WQ: Empty cell 0 or None?
+            CalcResult::EmptyCell => Some(Ok(0.0)),
+            error @ CalcResult::Error { .. } => Some(Err(error)),
             // WQ: What to do with ranges here?
             // CalcResult::Range { left, right } => {
             //     match implicit_intersection(&cell, &Range { left, right }) {

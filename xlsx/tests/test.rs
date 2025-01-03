@@ -548,7 +548,6 @@ fn get_values() -> Vec<&'static str> {
 
 #[test]
 fn create_test_model_2() {
-
     let func_info = get_fn_info();
     let values = get_values();
 
@@ -559,10 +558,7 @@ fn create_test_model_2() {
 
     fn set_formula(i: usize, args: &[&str], func_name: &str, model: &mut Model) {
         let args_list = args.join(", ");
-        let formula = format!(
-            "={}({args_list})",
-            func_name
-        );
+        let formula = format!("={}({args_list})", func_name);
         let text = format!("'{formula}");
         model.set_user_input(0, i as i32, 1, text).unwrap();
         model.set_user_input(0, i as i32, 2, formula).unwrap();
@@ -614,7 +610,7 @@ fn create_test_model() {
 
     let functions = vec![
         "OR", // "AND", "NOT", "IF", "IFERROR", "IFNA", "IFS", "SWITCH", "CHOOSE", "XOR", "OR", "AND", "SUM", "SUMIF",
-        // "SUMIFS",
+             // "SUMIFS",
     ];
     // WQ: for some reason this one causes an error when loading in Excel
     // values.push("=-2^1023");

@@ -50,6 +50,8 @@ impl<'a, T: Iterator<Item = &'a Node>> Iterator for NodeIterator<'a, T> {
                 let result = self.model.evaluate_node_in_context(next.unwrap(), self.cell);
                 if let CalcResult::Range { left, right } = &result {
                     self.range_iter = Some(RangeIter{
+                        // A common case for ranges is a full column such as A:A or 1:1. These ranges have 
+                        // WQ: Implement range optimisation based on sheet dimenson for full column/row ranges, e.g. A:A, 1:1.
                         range: Range {
                             left: left.clone(),
                             right: right.clone(),
@@ -249,6 +251,7 @@ impl Model {
             println!("calc_result: {:?}", calc_result);
             match calc_result {
                 error @ CalcResult::Error { .. } => return error,
+                // WQ: Iflet?
                 _ => {
                     if is_nested {
                         match calc_result {
@@ -260,8 +263,9 @@ impl Model {
                         }
                     } else {
                         match Model::cast_to_number_no_ii(calc_result, cell) {
-                            Ok(f) => result += f,
-                            Err(s) => return s,
+                            None => {},
+                            Some(Ok(f)) => result += f,
+                            Some(Err(s)) => return s,
                         }
                     }
                 }
@@ -271,8 +275,57 @@ impl Model {
         CalcResult::Number(result)
     }
 
-    // WQ:
     pub(crate) fn fn_product(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
+        if args.is_empty() {
+            return CalcResult::new_args_number_error(cell);
+        }
+        let mut result = 1.0;
+        let mut seen_value = false;
+        let mut values = NodeIterator::new(self, args.iter(), cell.clone());
+
+        for (calc_result, is_nested) in values {
+            match calc_result {
+                error @ CalcResult::Error { .. } => return error,
+                // WQ: Iflet?
+                // WQ: duplicated code with fn_sum
+                _ => {
+                    if is_nested {
+                        match calc_result {
+                            CalcResult::Number(f) => {
+                                println!("nested number: {:?}", f);
+                                seen_value = true;
+                                result *= f;
+                            }
+                            _ => {
+                                // WQ: I know strings aren't cast to numbers when nested, but what about booleans and 
+                                // other types?
+                            }
+                        }
+                    } else {
+                        println!("casting from {:?} to number", &calc_result);
+                        match Model::cast_to_number_no_ii(calc_result, cell) {
+                            None => {},
+                            Some(Ok(f)) => {
+                                println!("not nested number: {:?}", f);
+                                seen_value = true;
+                                result *= f;
+                            }
+                            Some(Err(s)) => return s,
+                        }
+                    }
+                }
+            };
+        }
+        if !seen_value {
+            return CalcResult::Number(0.0);
+        }
+        dbg!(result);
+        CalcResult::Number(result)
+    }
+
+
+    // WQ:
+    pub(crate) fn fn_product_old(&mut self, args: &[Node], cell: CellReferenceIndex) -> CalcResult {
         if args.is_empty() {
             return CalcResult::new_args_number_error(cell);
         }

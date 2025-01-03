@@ -14,7 +14,6 @@ fn test_fn_product_arguments() {
     assert_eq!(model._get_text("A1"), *"#ERROR!");
 }
 
-
 #[test]
 fn test_fn_product() {
     let mut model = new_empty_model();

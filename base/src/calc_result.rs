@@ -9,6 +9,7 @@ pub struct Range {
 }
 
 pub struct RangeIter {
+    // WQ: Test cases where left and right are in different sheets
     pub range: Range,
     pub i: CellReferenceIndex,
 }
@@ -17,7 +18,7 @@ impl Iterator for RangeIter {
     type Item = CellReferenceIndex;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.i.column >  self.range.right.column {
+        if self.i.column > self.range.right.column {
             self.i.column = self.range.left.column;
             self.i.row += 1;
         }
