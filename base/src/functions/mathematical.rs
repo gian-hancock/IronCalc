@@ -54,7 +54,8 @@ impl<'a, T: Iterator<Item = &'a Node>> Iterator for NodeIterator<'a, T> {
         if next.is_none() {
             return None
         } else {
-            let result = self.model.evaluate_node_in_context(next.unwrap(), self.cell);
+            let node = next.unwrap(); // WQ: Unwrap
+            let result = self.model.evaluate_node_in_context(node, self.cell);
             if let CalcResult::Range { left, right } = &result {
                 let row1 = left.row;
                 let mut row2 = right.row;
@@ -108,7 +109,8 @@ impl<'a, T: Iterator<Item = &'a Node>> Iterator for NodeIterator<'a, T> {
                 });
                 return self.next();
             } else {
-                return Some((result, false))
+                // WQ: Make sure generated tests cover this referenceKind means nested = true case
+                return Some((result, matches!(node, Node::ReferenceKind { .. })));
             }
         }
     }
@@ -331,7 +333,10 @@ impl Model {
 
         for (calc_result, is_nested) in values {
             match calc_result {
-                error @ CalcResult::Error { .. } => return error,
+                error @ CalcResult::Error { .. } => {
+                    // WQ: 
+                    return error;
+                },
                 // WQ: Iflet?
                 // WQ: duplicated code with fn_sum
                 _ => {
