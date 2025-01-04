@@ -174,7 +174,7 @@ impl Model {
                     }
                 }
                 error @ CalcResult::Error { .. } => return error,
-                CalcResult::EmptyArg => result = Some(result.unwrap_or(false)),
+                CalcResult::EmptyArg => result = Some(fold_fn(result, false)),
                 // Strings are ignored unless they are "TRUE" or "FALSE" (case insensitive). EXCEPT if the string value
                 // comes from a reference, in which case it is always ignored regardless of its value.
                 CalcResult::String(..) => {

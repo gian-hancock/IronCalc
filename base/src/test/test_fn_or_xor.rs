@@ -202,3 +202,16 @@ fn fn_or_xor_missing_arguments() {
         assert_eq!(model._get_text("A5"), *"FALSE");
     }
 }
+
+// WQ: Move
+#[test]
+fn fn_and() {
+    let mut model = new_empty_model();
+    model._set("A1", "=AND(,)");
+    model._set("A2", "=AND(FALSE,)");
+    model._set("A2", "=AND(TRUE,)");
+    model.evaluate();
+    assert_eq!(model._get_text("A1"), *"FALSE");
+    assert_eq!(model._get_text("A2"), *"FALSE");
+    assert_eq!(model._get_text("A2"), *"FALSE");
+}

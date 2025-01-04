@@ -91,6 +91,7 @@ impl<'a, T: Iterator<Item = &'a Node>> Iterator for NodeIterator<'a, T> {
                 self.range_iter = Some(RangeIter{
                     // A common case for ranges is a full column such as A:A or 1:1. These ranges have 
                     // WQ: Implement range optimisation based on sheet dimenson for full column/row ranges, e.g. A:A, 1:1.
+                    // WQ: Bench test suite before and after this change which introduces this optimisation in more places
                     range: Range {
                         left: CellReferenceIndex {
                             sheet: left.sheet,
@@ -367,7 +368,6 @@ impl Model {
         if !seen_value {
             return CalcResult::Number(0.0);
         }
-        dbg!(result);
         CalcResult::Number(result)
     }
 
@@ -438,20 +438,17 @@ impl Model {
                 }
                 error @ CalcResult::Error { .. } => return error,
                 calc_result => {
-                    dbg!(self.cast_to_number(calc_result.clone(), cell));
                     seen_value = true;
                     match self.cast_to_number(calc_result, cell) {
                         Ok(f) => result *= f,
                         Err(s) => return s,
                     }
-                    dbg!(result);
                 }
             };
         }
         if !seen_value {
             return CalcResult::Number(0.0);
         }
-        dbg!(result);
         CalcResult::Number(result)
     }
 

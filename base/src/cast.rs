@@ -20,11 +20,6 @@ impl Model {
         result: CalcResult,
         cell: CellReferenceIndex,
     ) -> Option<Result<f64, CalcResult>> {
-        dbg!(&result);
-        if let CalcResult::String(s) = &result {
-            dbg!("100");
-            dbg!(&s);
-        }
         let r = match result {
             CalcResult::Number(f) => Some(Ok(f)),
             CalcResult::String(s) => match s.parse::<f64>() {
@@ -61,11 +56,10 @@ impl Model {
             //     }
             // }
             x => {
-                dbg!(&x);
+                // WQ:
                 unimplemented!();
             }
         };
-        dbg!(&r);
         r
     }
 
