@@ -40,28 +40,75 @@ impl<'a, T: Iterator<Item = &'a Node>> Iterator for NodeIterator<'a, T> {
     type Item = (CalcResult, bool);
     
     fn next(&mut self) -> Option<Self::Item> {
+
+        // Handle active range iterator
         if let Some(range_iter) = &mut self.range_iter {
-            return range_iter.next().map(|cell| (self.model.evaluate_cell(cell), true));
-        } else {
-            let next = self.nodes.next();
-            if next.is_none() {
-                return None
+            if let Some(result) = range_iter.next().map(|cell: CellReferenceIndex| self.model.evaluate_cell(cell)) {
+                return Some((result, true));
             } else {
-                let result = self.model.evaluate_node_in_context(next.unwrap(), self.cell);
-                if let CalcResult::Range { left, right } = &result {
-                    self.range_iter = Some(RangeIter{
-                        // A common case for ranges is a full column such as A:A or 1:1. These ranges have 
-                        // WQ: Implement range optimisation based on sheet dimenson for full column/row ranges, e.g. A:A, 1:1.
-                        range: Range {
-                            left: left.clone(),
-                            right: right.clone(),
-                        },
-                        i: left.clone(),
-                    });
-                    return self.next();
-                } else {
-                    return Some((result, false))
+                self.range_iter = None;
+            }
+        }
+
+        let next = self.nodes.next();
+        if next.is_none() {
+            return None
+        } else {
+            let result = self.model.evaluate_node_in_context(next.unwrap(), self.cell);
+            if let CalcResult::Range { left, right } = &result {
+                let row1 = left.row;
+                let mut row2 = right.row;
+                let column1 = left.column;
+                let mut column2 = right.column;
+
+                // Optimisation for full row/column ranges (e.g. A:A or 1:1)
+                // WQ: improve implementation with clamping and cleaner logic?
+                if row1 == 1 && row2 == LAST_ROW {
+                    row2 = match self.model.workbook.worksheet(left.sheet) {
+                        Ok(s) => s.dimension().max_row,
+                        Err(_) => {
+                            return Some((CalcResult::new_error(
+                                Error::ERROR,
+                                self.cell,
+                                format!("Invalid worksheet index: '{}'", left.sheet),
+                            ), false));
+                        }
+                    };
                 }
+                if column1 == 1 && column2 == LAST_COLUMN {
+                    column2 = match self.model.workbook.worksheet(left.sheet) {
+                        Ok(s) => s.dimension().max_column,
+                        Err(_) => {
+                            return Some((CalcResult::new_error(
+                                Error::ERROR,
+                                self.cell,
+                                format!("Invalid worksheet index: '{}'", left.sheet),
+                            ), false));
+                        }
+                    };
+                }
+                self.range_iter = Some(RangeIter{
+                    // A common case for ranges is a full column such as A:A or 1:1. These ranges have 
+                    // WQ: Implement range optimisation based on sheet dimenson for full column/row ranges, e.g. A:A, 1:1.
+                    range: Range {
+                        left: CellReferenceIndex {
+                            sheet: left.sheet,
+                            row: row1,
+                            column: column1,
+                        },
+                        // WQ: Error if sheets are different?
+                        right: CellReferenceIndex { sheet: right.sheet, row: row2, column: column2}
+                    },
+                    // WQ: Duplicated from left:
+                    i: CellReferenceIndex {
+                        sheet: left.sheet,
+                        row: row1,
+                        column: column1,
+                    },
+                });
+                return self.next();
+            } else {
+                return Some((result, false))
             }
         }
     }
@@ -248,7 +295,6 @@ impl Model {
         let values = NodeIterator::new(self, args.iter(), cell.clone());
 
         for (calc_result, is_nested) in values {
-            println!("calc_result: {:?}", calc_result);
             match calc_result {
                 error @ CalcResult::Error { .. } => return error,
                 // WQ: Iflet?
@@ -292,7 +338,6 @@ impl Model {
                     if is_nested {
                         match calc_result {
                             CalcResult::Number(f) => {
-                                println!("nested number: {:?}", f);
                                 seen_value = true;
                                 result *= f;
                             }
@@ -302,11 +347,9 @@ impl Model {
                             }
                         }
                     } else {
-                        println!("casting from {:?} to number", &calc_result);
                         match Model::cast_to_number_no_ii(calc_result, cell) {
                             None => {},
                             Some(Ok(f)) => {
-                                println!("not nested number: {:?}", f);
                                 seen_value = true;
                                 result *= f;
                             }
