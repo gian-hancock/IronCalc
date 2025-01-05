@@ -16,6 +16,7 @@ impl Model {
     }
 
     // WQ: Option<Result>> is an ugly return type.
+    /// WQ: Better comment
     pub(crate) fn cast_to_number_no_ii(
         result: CalcResult,
         cell: CellReferenceIndex,
