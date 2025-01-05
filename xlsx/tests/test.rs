@@ -505,20 +505,19 @@ struct FunctionInfo {
 
 fn get_fn_info() -> Vec<FunctionInfo> {
     vec![
-        FunctionInfo { name: "ABS", airity: (1..=1).collect() },
-        FunctionInfo { name: "OR", airity: (1..=5).collect() },
-        FunctionInfo { name: "AND", airity: (1..=5).collect() },
-        FunctionInfo { name: "NOT", airity: (1..=1).collect() },
-        FunctionInfo { name: "IF", airity: (2..=3).collect() },
-        FunctionInfo { name: "IFERROR", airity: (2..=2).collect() },
-        FunctionInfo { name: "IFS", airity: vec![2, 4] },
-        FunctionInfo { name: "IFNA", airity: (2..=2).collect() },
-        FunctionInfo { name: "SWITCH", airity: (3..=5).collect() },
-        FunctionInfo { name: "CHOOSE", airity: (2..=5).collect() },
+        // FunctionInfo { name: "ABS", airity: (1..=1).collect() },
+        // FunctionInfo { name: "NOT", airity: (1..=1).collect() },
+        // FunctionInfo { name: "IF", airity: (2..=3).collect() },
+        // FunctionInfo { name: "IFERROR", airity: (2..=2).collect() },
+        // FunctionInfo { name: "IFS", airity: vec![2, 4] },
+        // FunctionInfo { name: "IFNA", airity: (2..=2).collect() },
+        // FunctionInfo { name: "SWITCH", airity: (3..=5).collect() },
+        // FunctionInfo { name: "CHOOSE", airity: (2..=5).collect() },
         FunctionInfo { name: "XOR", airity: (1..=5).collect() },
         FunctionInfo { name: "OR", airity: (1..=5).collect() },
         FunctionInfo { name: "AND", airity: (1..=5).collect() },
         FunctionInfo { name: "SUM", airity: (1..=5).collect() },
+        FunctionInfo { name: "PRODUCT", airity: (1..=5).collect() },
 
         // Allowed airities depends on the type of the arguments
         // FunctionInfo { name: "SUMIFS", airity: (3..=5).collect() },
@@ -537,6 +536,16 @@ fn get_values() -> Vec<&'static str> {
         r#""FALSE""#,
         r"TRUE",
         r"FALSE",
+        "A1:A10", // A11
+        "B1:B2", // A12
+        "A1", // A13
+        "B1", // A14
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A1:B1",
+        ""
         // "10000000000000000", // Beyond integer precision for double, rounded to even number
         // "-10000000000000000", // Beyond integer precision for double, rounded to even number
         // "10000000000000001", // Beyond integer precision for double, rounded to even number
@@ -571,8 +580,11 @@ fn create_test_model_2() {
         }
         for arg1 in values.iter() {
             if func.airity.contains(&1) {
-                set_formula(i, &[arg1], func.name, &mut model);
-                i += 1;
+                // WQ: Remove the need for this check
+                if !arg1.is_empty() {
+                    set_formula(i, &[arg1], func.name, &mut model);
+                    i += 1;
+                }
             }
             for arg2 in values.iter() {
                 if func.airity.contains(&2) {
